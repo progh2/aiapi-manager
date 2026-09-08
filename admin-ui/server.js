@@ -58,6 +58,29 @@ async function litellm(path, method = "GET", body) {
   return data;
 }
 
+// 발급/수정 공통: 클라이언트 입력에서 LiteLLM 키 파라미터만 추려 만든다
+function keyParams(body) {
+  const p = {};
+  if (body.budget !== undefined && body.budget !== "") p.max_budget = Number(body.budget);
+  if (body.budget_duration) p.budget_duration = body.budget_duration;   // 예산 리셋 주기: "1d"|"7d"|"30d"
+  if (body.duration) p.duration = body.duration;                        // 키 만료: "30d" 등
+  if (Array.isArray(body.models)) p.models = body.models;               // []이면 전체 허용
+  if (body.rpm_limit) p.rpm_limit = Number(body.rpm_limit);
+  if (body.tpm_limit) p.tpm_limit = Number(body.tpm_limit);
+  if (body.max_parallel_requests) p.max_parallel_requests = Number(body.max_parallel_requests);
+  return p;
+}
+
+// 프록시에 설정된 모델 목록 (발급 폼의 선택지)
+app.get("/api/models", requireAdmin, async (req, res) => {
+  try {
+    const data = await litellm("/v1/models");
+    res.json({ models: (data.data || []).map((m) => m.id) });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // 키 목록 (사용량 포함)
 app.get("/api/keys", requireAdmin, async (req, res) => {
   try {
@@ -69,16 +92,41 @@ app.get("/api/keys", requireAdmin, async (req, res) => {
 
 // 키 발급
 app.post("/api/keys", requireAdmin, async (req, res) => {
-  const { alias, budget, models, budget_duration } = req.body;
-  if (!alias) return res.status(400).json({ error: "alias가 필요합니다" });
+  if (!req.body.alias) return res.status(400).json({ error: "alias가 필요합니다" });
   try {
     const data = await litellm("/key/generate", "POST", {
-      key_alias: alias,
-      max_budget: Number(budget) || 2.0,
-      models: models?.length ? models : undefined,
-      budget_duration: budget_duration || undefined,
+      key_alias: req.body.alias,
+      ...keyParams(req.body),
     });
-    console.log(`${req.adminEmail} 이(가) 키 발급: ${alias}`);
+    console.log(`${req.adminEmail} 이(가) 키 발급: ${req.body.alias}`);
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// 키 수정 (예산·기한·모델·속도 제한 변경)
+app.post("/api/keys/update", requireAdmin, async (req, res) => {
+  if (!req.body.token) return res.status(400).json({ error: "token이 필요합니다" });
+  try {
+    const data = await litellm("/key/update", "POST", {
+      key: req.body.token,
+      ...keyParams(req.body),
+    });
+    console.log(`${req.adminEmail} 이(가) 키 수정: ${req.body.token.slice(0, 12)}...`);
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// 키 차단/해제 (삭제하지 않고 일시 정지)
+app.post("/api/keys/block", requireAdmin, async (req, res) => {
+  if (!req.body.token) return res.status(400).json({ error: "token이 필요합니다" });
+  try {
+    const path = req.body.blocked ? "/key/block" : "/key/unblock";
+    const data = await litellm(path, "POST", { key: req.body.token });
+    console.log(`${req.adminEmail} 이(가) 키 ${req.body.blocked ? "차단" : "차단 해제"}`);
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: e.message });
@@ -92,15 +140,6 @@ app.post("/api/keys/delete", requireAdmin, async (req, res) => {
   try {
     res.json(await litellm("/key/delete", "POST", { keys }));
     console.log(`${req.adminEmail} 이(가) 키 삭제: ${keys.length}개`);
-  } catch (e) {
-    res.status(502).json({ error: e.message });
-  }
-});
-
-// 전체 지출 요약
-app.get("/api/spend", requireAdmin, async (req, res) => {
-  try {
-    res.json(await litellm("/global/spend/keys?limit=200"));
   } catch (e) {
     res.status(502).json({ error: e.message });
   }

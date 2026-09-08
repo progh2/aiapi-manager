@@ -5,17 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI API Manager</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
     h1 { font-size: 1.4rem; }
-    button { padding: .45rem .9rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
+    button { padding: .45rem .8rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
     button.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: .9rem; }
-    th, td { border-bottom: 1px solid #e5e5e5; padding: .5rem .6rem; text-align: left; }
-    input, select { padding: .4rem; border: 1px solid #ccc; border-radius: 6px; }
-    #issue-form { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: 1rem; }
+    button.small { padding: .25rem .55rem; font-size: .8rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: .88rem; }
+    th, td { border-bottom: 1px solid #e5e5e5; padding: .5rem .55rem; text-align: left; vertical-align: top; }
+    th { color: #555; font-weight: 600; white-space: nowrap; }
+    input, select { padding: .4rem; border: 1px solid #ccc; border-radius: 6px; font-size: .9rem; }
+    fieldset { border: 1px solid #ddd; border-radius: 8px; margin-top: 1rem; padding: .8rem 1rem 1rem; }
+    legend { font-weight: 600; padding: 0 .4rem; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .7rem .9rem; }
+    .form-grid label { display: flex; flex-direction: column; gap: .25rem; font-size: .82rem; color: #555; }
+    #model-boxes { display: flex; flex-wrap: wrap; gap: .3rem .9rem; font-size: .88rem; margin-top: .3rem; }
+    #model-boxes label { display: flex; align-items: center; gap: .3rem; }
     #new-key { background: #fef7e0; padding: .6rem; border-radius: 6px; margin-top: .8rem; word-break: break-all; display: none; }
-    #error { color: #c5221f; margin-top: .8rem; }
+    #error { color: #c5221f; margin-top: .8rem; white-space: pre-wrap; }
     .muted { color: #777; }
+    .bar { background: #eee; border-radius: 4px; height: 6px; width: 110px; overflow: hidden; margin-top: .25rem; }
+    .bar i { display: block; height: 100%; background: #34a853; }
+    .bar i.warn { background: #f9ab00; }
+    .bar i.over { background: #ea4335; }
+    .badge { display: inline-block; font-size: .72rem; padding: .1rem .45rem; border-radius: 10px; background: #eee; color: #555; margin-left: .3rem; }
+    .badge.red { background: #fce8e6; color: #c5221f; }
+    .badge.yellow { background: #fef7e0; color: #b06000; }
+    tr.blocked td { opacity: .5; }
+    dialog { border: 1px solid #ccc; border-radius: 10px; padding: 1.2rem; min-width: 420px; }
+    dialog::backdrop { background: rgba(0,0,0,.25); }
+    .dlg-actions { margin-top: 1rem; display: flex; gap: .5rem; justify-content: flex-end; }
   </style>
 </head>
 <body>
@@ -27,25 +45,95 @@
   </div>
 
   <div id="app-view" style="display:none">
-    <p><span id="who" class="muted"></span> <button id="logout-btn">로그아웃</button></p>
+    <p><span id="who" class="muted"></span> <button id="logout-btn" class="small">로그아웃</button></p>
 
-    <form id="issue-form">
-      <input id="alias" placeholder="키 별칭 (예: 20261001-홍길동)" required>
-      <input id="budget" type="number" step="0.5" value="2" style="width:5rem" title="예산(USD)">
-      <select id="model">
-        <option value="gpt-4o-mini">gpt-4o-mini</option>
-        <option value="gpt-4o">gpt-4o</option>
-        <option value="">모든 모델</option>
-      </select>
-      <button class="primary" type="submit">키 발급</button>
-    </form>
-    <div id="new-key"></div>
+    <fieldset>
+      <legend>새 키 발급</legend>
+      <form id="issue-form">
+        <div class="form-grid">
+          <label>키 별칭 *
+            <input id="alias" placeholder="예: 20261001-홍길동" required>
+          </label>
+          <label>예산 (USD)
+            <input id="budget" type="number" step="0.5" min="0" value="2" placeholder="비우면 무제한">
+          </label>
+          <label>예산 리셋 주기
+            <select id="budget-duration">
+              <option value="">없음 (총액 한도)</option>
+              <option value="1d">매일</option>
+              <option value="7d">매주</option>
+              <option value="30d">매월(30일)</option>
+            </select>
+          </label>
+          <label>키 만료 기한
+            <select id="duration">
+              <option value="">무기한</option>
+              <option value="7d">7일</option>
+              <option value="30d">30일</option>
+              <option value="90d">90일 (한 학기)</option>
+              <option value="120d">120일</option>
+            </select>
+          </label>
+          <label>분당 요청 제한 (RPM)
+            <input id="rpm" type="number" min="1" placeholder="비우면 무제한">
+          </label>
+          <label>분당 토큰 제한 (TPM)
+            <input id="tpm" type="number" min="1" placeholder="비우면 무제한">
+          </label>
+        </div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(아무것도 안 고르면 전체 허용)</span></div>
+        <div id="model-boxes" class="muted">모델 목록 불러오는 중…</div>
+        <div style="margin-top:.9rem"><button class="primary" type="submit">키 발급</button></div>
+      </form>
+      <div id="new-key"></div>
+    </fieldset>
 
     <table>
-      <thead><tr><th>별칭</th><th>지출 (USD)</th><th>예산 (USD)</th><th>모델</th><th></th></tr></thead>
+      <thead><tr>
+        <th>별칭</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
+      </tr></thead>
       <tbody id="key-rows"></tbody>
     </table>
   </div>
+
+  <dialog id="edit-dlg">
+    <h3 style="margin-top:0">키 수정 — <span id="edit-alias"></span></h3>
+    <form id="edit-form" method="dialog">
+      <div class="form-grid">
+        <label>예산 (USD)
+          <input id="e-budget" type="number" step="0.5" min="0">
+        </label>
+        <label>예산 리셋 주기
+          <select id="e-budget-duration">
+            <option value="">없음 (총액 한도)</option>
+            <option value="1d">매일</option>
+            <option value="7d">매주</option>
+            <option value="30d">매월(30일)</option>
+          </select>
+        </label>
+        <label>만료 연장 (지금부터)
+          <select id="e-duration">
+            <option value="">변경 안 함</option>
+            <option value="7d">7일 뒤 만료</option>
+            <option value="30d">30일 뒤 만료</option>
+            <option value="90d">90일 뒤 만료</option>
+          </select>
+        </label>
+        <label>분당 요청 제한 (RPM)
+          <input id="e-rpm" type="number" min="1" placeholder="무제한">
+        </label>
+        <label>분당 토큰 제한 (TPM)
+          <input id="e-tpm" type="number" min="1" placeholder="무제한">
+        </label>
+      </div>
+      <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델</div>
+      <div id="e-model-boxes" class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+      <div class="dlg-actions">
+        <button type="button" id="edit-cancel">취소</button>
+        <button class="primary" type="submit">저장</button>
+      </div>
+    </form>
+  </dialog>
 
   <div id="error"></div>
 
@@ -56,6 +144,8 @@
     firebase.initializeApp(window.FIREBASE_CONFIG);
     const auth = firebase.auth();
     const $ = (id) => document.getElementById(id);
+    let availableModels = [];
+    let keyCache = [];
 
     async function api(path, opts = {}) {
       const token = await auth.currentUser.getIdToken();
@@ -68,19 +158,57 @@
       return data;
     }
 
+    function modelCheckboxes(container, prefix, checked = []) {
+      container.innerHTML = availableModels.map((m) =>
+        `<label><input type="checkbox" name="${prefix}" value="${m}" ${checked.includes(m) ? "checked" : ""}> ${m}</label>`
+      ).join("") || '<span class="muted">모델 없음</span>';
+    }
+
+    async function loadModels() {
+      try {
+        availableModels = (await api("/api/models")).models;
+        modelCheckboxes($("model-boxes"), "models");
+      } catch (e) { $("model-boxes").textContent = "모델 목록 로드 실패: " + e.message; }
+    }
+
+    function spendCell(k) {
+      const spend = k.spend ?? 0;
+      const budget = k.max_budget;
+      if (budget == null) return `$${spend.toFixed(3)} <span class="muted">/ 무제한</span>`;
+      const pct = Math.min(100, (spend / budget) * 100);
+      const cls = pct >= 100 ? "over" : pct >= 80 ? "warn" : "";
+      const badge = pct >= 100 ? '<span class="badge red">소진</span>' : pct >= 80 ? '<span class="badge yellow">임박</span>' : "";
+      return `$${spend.toFixed(3)} / $${budget}${badge}<div class="bar"><i class="${cls}" style="width:${pct}%"></i></div>`;
+    }
+
+    function expiryCell(k) {
+      if (!k.expires) return '<span class="muted">무기한</span>';
+      const d = new Date(k.expires);
+      const expired = d < new Date();
+      return d.toLocaleDateString("ko-KR") + (expired ? ' <span class="badge red">만료</span>' : "");
+    }
+
+    const DUR_LABEL = { "1d": "매일", "7d": "매주", "30d": "매월" };
+
     async function refreshKeys() {
       $("error").textContent = "";
       try {
-        const data = await api("/api/keys");
-        const rows = (data.keys || data.data || []).map((k) => `
-          <tr>
-            <td>${k.key_alias || "(없음)"}</td>
-            <td>${(k.spend ?? 0).toFixed(4)}</td>
-            <td>${k.max_budget ?? "무제한"}</td>
-            <td>${(k.models || []).join(", ") || "전체"}</td>
-            <td><button data-token="${k.token}" class="del">삭제</button></td>
+        keyCache = (await api("/api/keys")).keys || [];
+        const rows = keyCache.map((k, i) => `
+          <tr class="${k.blocked ? "blocked" : ""}">
+            <td>${k.key_alias || "(없음)"}${k.blocked ? ' <span class="badge red">차단됨</span>' : ""}</td>
+            <td>${spendCell(k)}</td>
+            <td>${DUR_LABEL[k.budget_duration] || '<span class="muted">없음</span>'}</td>
+            <td>${expiryCell(k)}</td>
+            <td>${(k.models || []).join(", ") || '<span class="muted">전체</span>'}</td>
+            <td>${k.rpm_limit ?? "-"} / ${k.tpm_limit ?? "-"}</td>
+            <td style="white-space:nowrap">
+              <button class="small" data-i="${i}" data-act="edit">수정</button>
+              <button class="small" data-i="${i}" data-act="block">${k.blocked ? "해제" : "차단"}</button>
+              <button class="small" data-i="${i}" data-act="del">삭제</button>
+            </td>
           </tr>`);
-        $("key-rows").innerHTML = rows.join("") || '<tr><td colspan="5" class="muted">발급된 키 없음</td></tr>';
+        $("key-rows").innerHTML = rows.join("") || '<tr><td colspan="7" class="muted">발급된 키 없음</td></tr>';
       } catch (e) { $("error").textContent = e.message; }
     }
 
@@ -90,19 +218,23 @@
     auth.onAuthStateChanged((user) => {
       $("login-view").style.display = user ? "none" : "";
       $("app-view").style.display = user ? "" : "none";
-      if (user) { $("who").textContent = user.email; refreshKeys(); }
+      if (user) { $("who").textContent = user.email; loadModels().then(refreshKeys); }
     });
 
     $("issue-form").onsubmit = async (ev) => {
       ev.preventDefault();
       try {
-        const model = $("model").value;
+        const models = [...document.querySelectorAll('input[name="models"]:checked')].map((c) => c.value);
         const data = await api("/api/keys", {
           method: "POST",
           body: JSON.stringify({
             alias: $("alias").value.trim(),
             budget: $("budget").value,
-            models: model ? [model] : [],
+            budget_duration: $("budget-duration").value,
+            duration: $("duration").value,
+            rpm_limit: $("rpm").value,
+            tpm_limit: $("tpm").value,
+            models,
           }),
         });
         const box = $("new-key");
@@ -113,11 +245,52 @@
       } catch (e) { $("error").textContent = e.message; }
     };
 
-    document.addEventListener("click", async (ev) => {
-      if (!ev.target.classList.contains("del")) return;
-      if (!confirm("이 키를 삭제할까요? 학생은 더 이상 사용할 수 없게 됩니다.")) return;
+    let editTarget = null;
+    function openEdit(k) {
+      editTarget = k;
+      $("edit-alias").textContent = k.key_alias || k.token.slice(0, 12);
+      $("e-budget").value = k.max_budget ?? "";
+      $("e-budget-duration").value = k.budget_duration || "";
+      $("e-duration").value = "";
+      $("e-rpm").value = k.rpm_limit ?? "";
+      $("e-tpm").value = k.tpm_limit ?? "";
+      modelCheckboxes($("e-model-boxes"), "e-models", k.models || []);
+      $("edit-dlg").showModal();
+    }
+    $("edit-cancel").onclick = () => $("edit-dlg").close();
+
+    $("edit-form").onsubmit = async () => {
       try {
-        await api("/api/keys/delete", { method: "POST", body: JSON.stringify({ keys: [ev.target.dataset.token] }) });
+        const models = [...document.querySelectorAll('input[name="e-models"]:checked')].map((c) => c.value);
+        await api("/api/keys/update", {
+          method: "POST",
+          body: JSON.stringify({
+            token: editTarget.token,
+            budget: $("e-budget").value,
+            budget_duration: $("e-budget-duration").value,
+            duration: $("e-duration").value,
+            rpm_limit: $("e-rpm").value,
+            tpm_limit: $("e-tpm").value,
+            models,
+          }),
+        });
+        refreshKeys();
+      } catch (e) { $("error").textContent = e.message; }
+    };
+
+    document.addEventListener("click", async (ev) => {
+      const act = ev.target.dataset.act;
+      if (!act) return;
+      const k = keyCache[Number(ev.target.dataset.i)];
+      try {
+        if (act === "edit") return openEdit(k);
+        if (act === "del") {
+          if (!confirm(`'${k.key_alias}' 키를 삭제할까요? 학생은 더 이상 사용할 수 없게 됩니다.`)) return;
+          await api("/api/keys/delete", { method: "POST", body: JSON.stringify({ keys: [k.token] }) });
+        }
+        if (act === "block") {
+          await api("/api/keys/block", { method: "POST", body: JSON.stringify({ token: k.token, blocked: !k.blocked }) });
+        }
         refreshKeys();
       } catch (e) { $("error").textContent = e.message; }
     });

@@ -17,12 +17,16 @@ import urllib.request
 
 
 def issue_key(base_url: str, master_key: str, alias: str, budget: float,
-              duration: str | None, models: list[str]) -> str:
+              budget_duration: str | None, duration: str | None,
+              models: list[str], rpm: int | None, tpm: int | None) -> str:
     payload = {
         "key_alias": alias,
         "max_budget": budget,
-        "budget_duration": duration,  # 예: "30d" (None이면 총액 한도)
+        "budget_duration": budget_duration,  # 예산 리셋 주기, 예: "30d" (None이면 총액 한도)
+        "duration": duration,                # 키 만료 기한, 예: "90d" (None이면 무기한)
         "models": models or [],
+        "rpm_limit": rpm,
+        "tpm_limit": tpm,
     }
     req = urllib.request.Request(
         f"{base_url.rstrip('/')}/key/generate",
@@ -47,7 +51,11 @@ def main() -> None:
     p.add_argument("--master-key", required=True, help="LITELLM_MASTER_KEY")
     p.add_argument("--budget", type=float, default=2.0, help="키당 예산(USD), 기본 2.0")
     p.add_argument("--budget-duration", default=None,
-                   help='예산 주기. 예: "30d". 생략하면 총액 한도')
+                   help='예산 리셋 주기. 예: "30d". 생략하면 총액 한도')
+    p.add_argument("--duration", default=None,
+                   help='키 만료 기한. 예: "90d"(한 학기). 생략하면 무기한')
+    p.add_argument("--rpm", type=int, default=None, help="분당 요청 제한. 생략하면 무제한")
+    p.add_argument("--tpm", type=int, default=None, help="분당 토큰 제한. 생략하면 무제한")
     p.add_argument("--models", nargs="*", default=["gpt-4o-mini"],
                    help="허용 모델 목록, 기본 gpt-4o-mini")
     p.add_argument("--output", default="issued_keys.csv", help="발급 결과 CSV")
@@ -65,7 +73,8 @@ def main() -> None:
             alias = f"{s['student_id']}-{s['name']}"
             try:
                 key = issue_key(args.base_url, args.master_key, alias,
-                                args.budget, args.budget_duration, args.models)
+                                args.budget, args.budget_duration, args.duration,
+                                args.models, args.rpm, args.tpm)
             except Exception as e:
                 print(f"실패: {alias}: {e}", file=sys.stderr)
                 continue
