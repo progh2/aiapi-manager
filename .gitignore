@@ -3,3 +3,4 @@ data/
 issued_keys.csv
 students.csv
 __pycache__/
+node_modules/
