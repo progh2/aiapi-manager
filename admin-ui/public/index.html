@@ -5,21 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI API Manager</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    body { font-family: system-ui, sans-serif; max-width: 1150px; margin: 2rem auto; padding: 0 1rem; color: #222; }
     h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.05rem; margin: 1.6rem 0 .4rem; }
     button { padding: .45rem .8rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
     button.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
     button.small { padding: .25rem .55rem; font-size: .8rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: .88rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: .6rem; font-size: .88rem; }
     th, td { border-bottom: 1px solid #e5e5e5; padding: .5rem .55rem; text-align: left; vertical-align: top; }
     th { color: #555; font-weight: 600; white-space: nowrap; }
-    input, select { padding: .4rem; border: 1px solid #ccc; border-radius: 6px; font-size: .9rem; }
+    input, select, textarea { padding: .4rem; border: 1px solid #ccc; border-radius: 6px; font-size: .9rem; font-family: inherit; }
     fieldset { border: 1px solid #ddd; border-radius: 8px; margin-top: 1rem; padding: .8rem 1rem 1rem; }
     legend { font-weight: 600; padding: 0 .4rem; }
-    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .7rem .9rem; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .7rem .9rem; }
     .form-grid label { display: flex; flex-direction: column; gap: .25rem; font-size: .82rem; color: #555; }
-    #model-boxes { display: flex; flex-wrap: wrap; gap: .3rem .9rem; font-size: .88rem; margin-top: .3rem; }
-    #model-boxes label { display: flex; align-items: center; gap: .3rem; }
+    .model-boxes { display: flex; flex-wrap: wrap; gap: .3rem .9rem; font-size: .88rem; margin-top: .3rem; }
+    .model-boxes label { display: flex; align-items: center; gap: .3rem; }
     #new-key { background: #fef7e0; padding: .6rem; border-radius: 6px; margin-top: .8rem; word-break: break-all; display: none; }
     #error { color: #c5221f; margin-top: .8rem; white-space: pre-wrap; }
     .muted { color: #777; }
@@ -30,10 +31,12 @@
     .badge { display: inline-block; font-size: .72rem; padding: .1rem .45rem; border-radius: 10px; background: #eee; color: #555; margin-left: .3rem; }
     .badge.red { background: #fce8e6; color: #c5221f; }
     .badge.yellow { background: #fef7e0; color: #b06000; }
+    .badge.blue { background: #e8f0fe; color: #1a73e8; }
     tr.blocked td { opacity: .5; }
-    dialog { border: 1px solid #ccc; border-radius: 10px; padding: 1.2rem; min-width: 420px; }
+    dialog { border: 1px solid #ccc; border-radius: 10px; padding: 1.2rem; min-width: 440px; }
     dialog::backdrop { background: rgba(0,0,0,.25); }
     .dlg-actions { margin-top: 1rem; display: flex; gap: .5rem; justify-content: flex-end; }
+    .toolbar { display: flex; gap: .6rem; align-items: center; margin-top: 1.2rem; }
   </style>
 </head>
 <body>
@@ -48,11 +51,47 @@
     <p><span id="who" class="muted"></span> <button id="logout-btn" class="small">로그아웃</button></p>
 
     <fieldset>
-      <legend>새 키 발급</legend>
+      <legend>그룹 관리</legend>
+      <p class="muted" style="margin:.2rem 0 .6rem; font-size:.82rem">
+        그룹 예산·제한은 소속 학생 키 전체의 <b>합산</b> 사용량에 적용됩니다. 개별 키 제한과 중첩 적용됩니다.</p>
+      <form id="team-form" class="form-grid">
+        <label>그룹 이름 *
+          <input id="t-alias" placeholder="예: 3학년A반, 캡스톤1조" required>
+        </label>
+        <label>그룹 예산 (USD)
+          <input id="t-budget" type="number" step="1" min="0" placeholder="비우면 무제한">
+        </label>
+        <label>예산 리셋 주기
+          <select id="t-budget-duration">
+            <option value="">없음 (총액 한도)</option>
+            <option value="1d">매일</option>
+            <option value="7d">매주</option>
+            <option value="30d">매월(30일)</option>
+          </select>
+        </label>
+        <label>그룹 RPM
+          <input id="t-rpm" type="number" min="1" placeholder="무제한">
+        </label>
+        <label>그룹 TPM
+          <input id="t-tpm" type="number" min="1" placeholder="무제한">
+        </label>
+        <label>&nbsp;<button class="primary" type="submit">그룹 생성</button></label>
+      </form>
+      <table>
+        <thead><tr><th>그룹</th><th>지출 / 예산</th><th>리셋 주기</th><th>RPM/TPM</th><th>키 수</th><th></th></tr></thead>
+        <tbody id="team-rows"></tbody>
+      </table>
+    </fieldset>
+
+    <fieldset>
+      <legend>키 발급</legend>
       <form id="issue-form">
         <div class="form-grid">
-          <label>키 별칭 *
-            <input id="alias" placeholder="예: 20261001-홍길동" required>
+          <label>키 별칭 (1명 발급)
+            <input id="alias" placeholder="예: 20261001-홍길동">
+          </label>
+          <label>소속 그룹
+            <select id="team-select"><option value="">그룹 없음</option></select>
           </label>
           <label>예산 (USD)
             <input id="budget" type="number" step="0.5" min="0" value="2" placeholder="비우면 무제한">
@@ -81,23 +120,30 @@
             <input id="tpm" type="number" min="1" placeholder="비우면 무제한">
           </label>
         </div>
-        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(아무것도 안 고르면 전체 허용)</span></div>
-        <div id="model-boxes" class="muted">모델 목록 불러오는 중…</div>
-        <div style="margin-top:.9rem"><button class="primary" type="submit">키 발급</button></div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(아무것도 안 고르면 전체/그룹 설정 따름)</span></div>
+        <div id="model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
+        <div style="margin-top:.9rem; font-size:.82rem; color:#555">
+          여러 명 일괄 발급 <span class="muted">(한 줄에 <code>학번,이름</code> — 입력하면 위 별칭 대신 이 명단으로 발급)</span></div>
+        <textarea id="bulk" rows="4" style="width:100%; margin-top:.3rem" placeholder="20261001,홍길동&#10;20261002,김철수"></textarea>
+        <div style="margin-top:.9rem"><button class="primary" type="submit">발급</button></div>
       </form>
       <div id="new-key"></div>
     </fieldset>
 
+    <div class="toolbar">
+      <h2 style="margin:0">발급된 키</h2>
+      <select id="filter-team"><option value="">전체 그룹</option></select>
+    </div>
     <table>
       <thead><tr>
-        <th>별칭</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
+        <th>별칭</th><th>그룹</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
       </tr></thead>
       <tbody id="key-rows"></tbody>
     </table>
   </div>
 
   <dialog id="edit-dlg">
-    <h3 style="margin-top:0">키 수정 — <span id="edit-alias"></span></h3>
+    <h3 style="margin-top:0"><span id="edit-kind"></span> 수정 — <span id="edit-alias"></span></h3>
     <form id="edit-form" method="dialog">
       <div class="form-grid">
         <label>예산 (USD)
@@ -111,7 +157,7 @@
             <option value="30d">매월(30일)</option>
           </select>
         </label>
-        <label>만료 연장 (지금부터)
+        <label id="e-duration-wrap">만료 연장 (지금부터)
           <select id="e-duration">
             <option value="">변경 안 함</option>
             <option value="7d">7일 뒤 만료</option>
@@ -126,8 +172,10 @@
           <input id="e-tpm" type="number" min="1" placeholder="무제한">
         </label>
       </div>
-      <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델</div>
-      <div id="e-model-boxes" class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+      <div id="e-models-wrap">
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델</div>
+        <div id="e-model-boxes" class="model-boxes"></div>
+      </div>
       <div class="dlg-actions">
         <button type="button" id="edit-cancel">취소</button>
         <button class="primary" type="submit">저장</button>
@@ -146,6 +194,7 @@
     const $ = (id) => document.getElementById(id);
     let availableModels = [];
     let keyCache = [];
+    let teamCache = [];
 
     async function api(path, opts = {}) {
       const token = await auth.currentUser.getIdToken();
@@ -171,9 +220,8 @@
       } catch (e) { $("model-boxes").textContent = "모델 목록 로드 실패: " + e.message; }
     }
 
-    function spendCell(k) {
-      const spend = k.spend ?? 0;
-      const budget = k.max_budget;
+    function gauge(spend, budget) {
+      spend = spend ?? 0;
       if (budget == null) return `$${spend.toFixed(3)} <span class="muted">/ 무제한</span>`;
       const pct = Math.min(100, (spend / budget) * 100);
       const cls = pct >= 100 ? "over" : pct >= 80 ? "warn" : "";
@@ -184,20 +232,56 @@
     function expiryCell(k) {
       if (!k.expires) return '<span class="muted">무기한</span>';
       const d = new Date(k.expires);
-      const expired = d < new Date();
-      return d.toLocaleDateString("ko-KR") + (expired ? ' <span class="badge red">만료</span>' : "");
+      return d.toLocaleDateString("ko-KR") + (d < new Date() ? ' <span class="badge red">만료</span>' : "");
     }
 
     const DUR_LABEL = { "1d": "매일", "7d": "매주", "30d": "매월" };
+    const teamAlias = (id) => teamCache.find((t) => t.team_id === id)?.team_alias || (id ? id.slice(0, 8) : "");
+
+    async function refreshTeams() {
+      try {
+        teamCache = (await api("/api/teams")).teams;
+        const keyCount = (t) => keyCache.filter((k) => k.team_id === t.team_id).length;
+        $("team-rows").innerHTML = teamCache.map((t, i) => `
+          <tr>
+            <td>${t.team_alias || t.team_id.slice(0, 8)}</td>
+            <td>${gauge(t.spend, t.max_budget)}</td>
+            <td>${DUR_LABEL[t.budget_duration] || '<span class="muted">없음</span>'}</td>
+            <td>${t.rpm_limit ?? "-"} / ${t.tpm_limit ?? "-"}</td>
+            <td>${keyCount(t)}</td>
+            <td style="white-space:nowrap">
+              <button class="small" data-ti="${i}" data-act="t-edit">수정</button>
+              <button class="small" data-ti="${i}" data-act="t-del">삭제</button>
+            </td>
+          </tr>`).join("") || '<tr><td colspan="6" class="muted">그룹 없음</td></tr>';
+        for (const sel of [$("team-select"), $("filter-team")]) {
+          const cur = sel.value;
+          sel.innerHTML = `<option value="">${sel.id === "filter-team" ? "전체 그룹" : "그룹 없음"}</option>` +
+            teamCache.map((t) => `<option value="${t.team_id}">${t.team_alias || t.team_id.slice(0, 8)}</option>`).join("");
+          sel.value = cur;
+        }
+      } catch (e) { $("error").textContent = e.message; }
+    }
 
     async function refreshKeys() {
       $("error").textContent = "";
       try {
         keyCache = (await api("/api/keys")).keys || [];
-        const rows = keyCache.map((k, i) => `
+        renderKeys();
+        refreshTeams();
+      } catch (e) { $("error").textContent = e.message; }
+    }
+
+    function renderKeys() {
+      const filter = $("filter-team").value;
+      const rows = keyCache
+        .map((k, i) => ({ k, i }))
+        .filter(({ k }) => !filter || k.team_id === filter)
+        .map(({ k, i }) => `
           <tr class="${k.blocked ? "blocked" : ""}">
             <td>${k.key_alias || "(없음)"}${k.blocked ? ' <span class="badge red">차단됨</span>' : ""}</td>
-            <td>${spendCell(k)}</td>
+            <td>${k.team_id ? `<span class="badge blue">${teamAlias(k.team_id)}</span>` : '<span class="muted">-</span>'}</td>
+            <td>${gauge(k.spend, k.max_budget)}</td>
             <td>${DUR_LABEL[k.budget_duration] || '<span class="muted">없음</span>'}</td>
             <td>${expiryCell(k)}</td>
             <td>${(k.models || []).join(", ") || '<span class="muted">전체</span>'}</td>
@@ -208,9 +292,9 @@
               <button class="small" data-i="${i}" data-act="del">삭제</button>
             </td>
           </tr>`);
-        $("key-rows").innerHTML = rows.join("") || '<tr><td colspan="7" class="muted">발급된 키 없음</td></tr>';
-      } catch (e) { $("error").textContent = e.message; }
+      $("key-rows").innerHTML = rows.join("") || '<tr><td colspan="8" class="muted">발급된 키 없음</td></tr>';
     }
+    $("filter-team").onchange = renderKeys;
 
     $("login-btn").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
     $("logout-btn").onclick = () => auth.signOut();
@@ -221,59 +305,116 @@
       if (user) { $("who").textContent = user.email; loadModels().then(refreshKeys); }
     });
 
-    $("issue-form").onsubmit = async (ev) => {
+    // ---- 그룹 생성/수정/삭제 ----
+    $("team-form").onsubmit = async (ev) => {
       ev.preventDefault();
       try {
-        const models = [...document.querySelectorAll('input[name="models"]:checked')].map((c) => c.value);
-        const data = await api("/api/keys", {
+        await api("/api/teams", {
           method: "POST",
           body: JSON.stringify({
-            alias: $("alias").value.trim(),
-            budget: $("budget").value,
-            budget_duration: $("budget-duration").value,
-            duration: $("duration").value,
-            rpm_limit: $("rpm").value,
-            tpm_limit: $("tpm").value,
-            models,
+            alias: $("t-alias").value.trim(),
+            budget: $("t-budget").value,
+            budget_duration: $("t-budget-duration").value,
+            rpm_limit: $("t-rpm").value,
+            tpm_limit: $("t-tpm").value,
           }),
         });
-        const box = $("new-key");
-        box.style.display = "block";
-        box.textContent = `발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}`;
-        $("alias").value = "";
+        $("t-alias").value = "";
+        refreshTeams();
+      } catch (e) { $("error").textContent = e.message; }
+    };
+
+    // ---- 발급 (단건 + 일괄) ----
+    function issueSettings() {
+      const models = [...document.querySelectorAll('input[name="models"]:checked')].map((c) => c.value);
+      return {
+        team_id: $("team-select").value,
+        budget: $("budget").value,
+        budget_duration: $("budget-duration").value,
+        duration: $("duration").value,
+        rpm_limit: $("rpm").value,
+        tpm_limit: $("tpm").value,
+        models,
+      };
+    }
+
+    $("issue-form").onsubmit = async (ev) => {
+      ev.preventDefault();
+      const bulkText = $("bulk").value.trim();
+      const box = $("new-key");
+      try {
+        if (bulkText) {
+          const students = bulkText.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+            const [id, name] = l.split(/[,\t ]+/);
+            return { alias: name ? `${id}-${name}` : id };
+          });
+          const { results } = await api("/api/keys/bulk", {
+            method: "POST",
+            body: JSON.stringify({ students, ...issueSettings() }),
+          });
+          const ok = results.filter((r) => r.key);
+          const fail = results.filter((r) => r.error);
+          const csv = "alias,api_key\n" + ok.map((r) => `${r.alias},${r.key}`).join("\n");
+          const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+          box.style.display = "block";
+          box.innerHTML = `${ok.length}명 발급 완료 — <a href="${url}" download="issued_keys.csv">키 목록 CSV 다운로드</a>`
+            + ` (이 페이지를 벗어나면 다시 받을 수 없음)`
+            + (fail.length ? `<br>실패 ${fail.length}건: ${fail.map((r) => `${r.alias} (${r.error})`).join(", ")}` : "");
+          $("bulk").value = "";
+        } else {
+          const alias = $("alias").value.trim();
+          if (!alias) throw new Error("별칭을 입력하거나 일괄 명단을 붙여넣으세요");
+          const data = await api("/api/keys", {
+            method: "POST",
+            body: JSON.stringify({ alias, ...issueSettings() }),
+          });
+          box.style.display = "block";
+          box.textContent = `발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}`;
+          $("alias").value = "";
+        }
         refreshKeys();
       } catch (e) { $("error").textContent = e.message; }
     };
 
-    let editTarget = null;
-    function openEdit(k) {
-      editTarget = k;
-      $("edit-alias").textContent = k.key_alias || k.token.slice(0, 12);
-      $("e-budget").value = k.max_budget ?? "";
-      $("e-budget-duration").value = k.budget_duration || "";
+    // ---- 수정 다이얼로그 (키/그룹 공용) ----
+    let editTarget = null, editKind = "key";
+    function openEdit(kind, obj) {
+      editKind = kind;
+      editTarget = obj;
+      $("edit-kind").textContent = kind === "key" ? "키" : "그룹";
+      $("edit-alias").textContent = obj.key_alias || obj.team_alias || "";
+      $("e-budget").value = obj.max_budget ?? "";
+      $("e-budget-duration").value = obj.budget_duration || "";
       $("e-duration").value = "";
-      $("e-rpm").value = k.rpm_limit ?? "";
-      $("e-tpm").value = k.tpm_limit ?? "";
-      modelCheckboxes($("e-model-boxes"), "e-models", k.models || []);
+      $("e-rpm").value = obj.rpm_limit ?? "";
+      $("e-tpm").value = obj.tpm_limit ?? "";
+      $("e-duration-wrap").style.display = kind === "key" ? "" : "none";
+      $("e-models-wrap").style.display = kind === "key" ? "" : "none";
+      if (kind === "key") modelCheckboxes($("e-model-boxes"), "e-models", obj.models || []);
       $("edit-dlg").showModal();
     }
     $("edit-cancel").onclick = () => $("edit-dlg").close();
 
     $("edit-form").onsubmit = async () => {
       try {
-        const models = [...document.querySelectorAll('input[name="e-models"]:checked')].map((c) => c.value);
-        await api("/api/keys/update", {
-          method: "POST",
-          body: JSON.stringify({
-            token: editTarget.token,
-            budget: $("e-budget").value,
-            budget_duration: $("e-budget-duration").value,
-            duration: $("e-duration").value,
-            rpm_limit: $("e-rpm").value,
-            tpm_limit: $("e-tpm").value,
-            models,
-          }),
-        });
+        const common = {
+          budget: $("e-budget").value,
+          budget_duration: $("e-budget-duration").value,
+          rpm_limit: $("e-rpm").value,
+          tpm_limit: $("e-tpm").value,
+        };
+        if (editKind === "key") {
+          const models = [...document.querySelectorAll('input[name="e-models"]:checked')].map((c) => c.value);
+          await api("/api/keys/update", {
+            method: "POST",
+            body: JSON.stringify({ token: editTarget.token, duration: $("e-duration").value, models, ...common }),
+          });
+        } else {
+          await api("/api/teams/update", {
+            method: "POST",
+            body: JSON.stringify({ team_id: editTarget.team_id, ...common }),
+          });
+        }
         refreshKeys();
       } catch (e) { $("error").textContent = e.message; }
     };
@@ -281,15 +422,24 @@
     document.addEventListener("click", async (ev) => {
       const act = ev.target.dataset.act;
       if (!act) return;
-      const k = keyCache[Number(ev.target.dataset.i)];
       try {
-        if (act === "edit") return openEdit(k);
-        if (act === "del") {
-          if (!confirm(`'${k.key_alias}' 키를 삭제할까요? 학생은 더 이상 사용할 수 없게 됩니다.`)) return;
-          await api("/api/keys/delete", { method: "POST", body: JSON.stringify({ keys: [k.token] }) });
-        }
-        if (act === "block") {
-          await api("/api/keys/block", { method: "POST", body: JSON.stringify({ token: k.token, blocked: !k.blocked }) });
+        if (act.startsWith("t-")) {
+          const t = teamCache[Number(ev.target.dataset.ti)];
+          if (act === "t-edit") return openEdit("team", t);
+          if (act === "t-del") {
+            if (!confirm(`'${t.team_alias}' 그룹을 삭제할까요? 소속 키도 함께 삭제됩니다.`)) return;
+            await api("/api/teams/delete", { method: "POST", body: JSON.stringify({ team_id: t.team_id }) });
+          }
+        } else {
+          const k = keyCache[Number(ev.target.dataset.i)];
+          if (act === "edit") return openEdit("key", k);
+          if (act === "del") {
+            if (!confirm(`'${k.key_alias}' 키를 삭제할까요? 학생은 더 이상 사용할 수 없게 됩니다.`)) return;
+            await api("/api/keys/delete", { method: "POST", body: JSON.stringify({ keys: [k.token] }) });
+          }
+          if (act === "block") {
+            await api("/api/keys/block", { method: "POST", body: JSON.stringify({ token: k.token, blocked: !k.blocked }) });
+          }
         }
         refreshKeys();
       } catch (e) { $("error").textContent = e.message; }

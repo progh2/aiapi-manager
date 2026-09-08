@@ -71,6 +71,78 @@ function keyParams(body) {
   return p;
 }
 
+// ---- 그룹(LiteLLM Team) 관리 ----
+// 그룹 예산·제한은 소속 키 전체의 합산 사용량에 적용된다.
+
+app.get("/api/teams", requireAdmin, async (req, res) => {
+  try {
+    const data = await litellm("/team/list");
+    res.json({ teams: Array.isArray(data) ? data : data.teams || [] });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.post("/api/teams", requireAdmin, async (req, res) => {
+  if (!req.body.alias) return res.status(400).json({ error: "그룹 이름이 필요합니다" });
+  try {
+    const data = await litellm("/team/new", "POST", {
+      team_alias: req.body.alias,
+      ...keyParams(req.body),
+    });
+    console.log(`${req.adminEmail} 이(가) 그룹 생성: ${req.body.alias}`);
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.post("/api/teams/update", requireAdmin, async (req, res) => {
+  if (!req.body.team_id) return res.status(400).json({ error: "team_id가 필요합니다" });
+  try {
+    res.json(await litellm("/team/update", "POST", {
+      team_id: req.body.team_id,
+      ...keyParams(req.body),
+    }));
+    console.log(`${req.adminEmail} 이(가) 그룹 수정: ${req.body.team_id}`);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.post("/api/teams/delete", requireAdmin, async (req, res) => {
+  if (!req.body.team_id) return res.status(400).json({ error: "team_id가 필요합니다" });
+  try {
+    res.json(await litellm("/team/delete", "POST", { team_ids: [req.body.team_id] }));
+    console.log(`${req.adminEmail} 이(가) 그룹 삭제: ${req.body.team_id}`);
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// 학생 일괄 추가: 명단 배열을 받아 키를 순차 발급하고 결과(키 포함)를 돌려준다
+app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
+  const { students, ...defaults } = req.body;
+  if (!Array.isArray(students) || !students.length) {
+    return res.status(400).json({ error: "students 배열이 필요합니다" });
+  }
+  const results = [];
+  for (const s of students) {
+    try {
+      const data = await litellm("/key/generate", "POST", {
+        key_alias: s.alias,
+        team_id: defaults.team_id || undefined,
+        ...keyParams(defaults),
+      });
+      results.push({ alias: s.alias, key: data.key });
+    } catch (e) {
+      results.push({ alias: s.alias, error: e.message });
+    }
+  }
+  console.log(`${req.adminEmail} 이(가) 일괄 발급: ${students.length}명`);
+  res.json({ results });
+});
+
 // 프록시에 설정된 모델 목록 (발급 폼의 선택지)
 app.get("/api/models", requireAdmin, async (req, res) => {
   try {
@@ -81,10 +153,16 @@ app.get("/api/models", requireAdmin, async (req, res) => {
   }
 });
 
-// 키 목록 (사용량 포함)
+// 키 목록 (사용량 포함). size는 LiteLLM이 100까지만 허용하므로 페이지를 돌며 모두 모은다.
 app.get("/api/keys", requireAdmin, async (req, res) => {
   try {
-    res.json(await litellm("/key/list?return_full_object=true&size=200"));
+    const keys = [];
+    for (let page = 1; ; page++) {
+      const data = await litellm(`/key/list?return_full_object=true&size=100&page=${page}`);
+      keys.push(...(data.keys || []));
+      if (page >= (data.total_pages || 1)) break;
+    }
+    res.json({ keys });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
@@ -96,6 +174,7 @@ app.post("/api/keys", requireAdmin, async (req, res) => {
   try {
     const data = await litellm("/key/generate", "POST", {
       key_alias: req.body.alias,
+      team_id: req.body.team_id || undefined,
       ...keyParams(req.body),
     });
     console.log(`${req.adminEmail} 이(가) 키 발급: ${req.body.alias}`);
