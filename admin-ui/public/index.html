@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI API Manager</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1 { font-size: 1.4rem; }
+    button { padding: .45rem .9rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
+    button.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: .9rem; }
+    th, td { border-bottom: 1px solid #e5e5e5; padding: .5rem .6rem; text-align: left; }
+    input, select { padding: .4rem; border: 1px solid #ccc; border-radius: 6px; }
+    #issue-form { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: 1rem; }
+    #new-key { background: #fef7e0; padding: .6rem; border-radius: 6px; margin-top: .8rem; word-break: break-all; display: none; }
+    #error { color: #c5221f; margin-top: .8rem; }
+    .muted { color: #777; }
+  </style>
+</head>
+<body>
+  <h1>AI API Manager <span class="muted">— 수업용 키 관리</span></h1>
+
+  <div id="login-view">
+    <p>관리자 계정으로 로그인하세요.</p>
+    <button class="primary" id="login-btn">Google로 로그인</button>
+  </div>
+
+  <div id="app-view" style="display:none">
+    <p><span id="who" class="muted"></span> <button id="logout-btn">로그아웃</button></p>
+
+    <form id="issue-form">
+      <input id="alias" placeholder="키 별칭 (예: 20261001-홍길동)" required>
+      <input id="budget" type="number" step="0.5" value="2" style="width:5rem" title="예산(USD)">
+      <select id="model">
+        <option value="gpt-4o-mini">gpt-4o-mini</option>
+        <option value="gpt-4o">gpt-4o</option>
+        <option value="">모든 모델</option>
+      </select>
+      <button class="primary" type="submit">키 발급</button>
+    </form>
+    <div id="new-key"></div>
+
+    <table>
+      <thead><tr><th>별칭</th><th>지출 (USD)</th><th>예산 (USD)</th><th>모델</th><th></th></tr></thead>
+      <tbody id="key-rows"></tbody>
+    </table>
+  </div>
+
+  <div id="error"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script>
+    firebase.initializeApp(window.FIREBASE_CONFIG);
+    const auth = firebase.auth();
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, opts = {}) {
+      const token = await auth.currentUser.getIdToken();
+      const resp = await fetch(path, {
+        ...opts,
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts.headers },
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || resp.status);
+      return data;
+    }
+
+    async function refreshKeys() {
+      $("error").textContent = "";
+      try {
+        const data = await api("/api/keys");
+        const rows = (data.keys || data.data || []).map((k) => `
+          <tr>
+            <td>${k.key_alias || "(없음)"}</td>
+            <td>${(k.spend ?? 0).toFixed(4)}</td>
+            <td>${k.max_budget ?? "무제한"}</td>
+            <td>${(k.models || []).join(", ") || "전체"}</td>
+            <td><button data-token="${k.token}" class="del">삭제</button></td>
+          </tr>`);
+        $("key-rows").innerHTML = rows.join("") || '<tr><td colspan="5" class="muted">발급된 키 없음</td></tr>';
+      } catch (e) { $("error").textContent = e.message; }
+    }
+
+    $("login-btn").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    $("logout-btn").onclick = () => auth.signOut();
+
+    auth.onAuthStateChanged((user) => {
+      $("login-view").style.display = user ? "none" : "";
+      $("app-view").style.display = user ? "" : "none";
+      if (user) { $("who").textContent = user.email; refreshKeys(); }
+    });
+
+    $("issue-form").onsubmit = async (ev) => {
+      ev.preventDefault();
+      try {
+        const model = $("model").value;
+        const data = await api("/api/keys", {
+          method: "POST",
+          body: JSON.stringify({
+            alias: $("alias").value.trim(),
+            budget: $("budget").value,
+            models: model ? [model] : [],
+          }),
+        });
+        const box = $("new-key");
+        box.style.display = "block";
+        box.textContent = `발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}`;
+        $("alias").value = "";
+        refreshKeys();
+      } catch (e) { $("error").textContent = e.message; }
+    };
+
+    document.addEventListener("click", async (ev) => {
+      if (!ev.target.classList.contains("del")) return;
+      if (!confirm("이 키를 삭제할까요? 학생은 더 이상 사용할 수 없게 됩니다.")) return;
+      try {
+        await api("/api/keys/delete", { method: "POST", body: JSON.stringify({ keys: [ev.target.dataset.token] }) });
+        refreshKeys();
+      } catch (e) { $("error").textContent = e.message; }
+    });
+  </script>
+</body>
+</html>
