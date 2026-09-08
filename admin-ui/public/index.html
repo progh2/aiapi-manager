@@ -10,6 +10,7 @@
     h2 { font-size: 1.05rem; margin: 1.6rem 0 .4rem; }
     button { padding: .45rem .8rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
     button.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+    button:disabled { background: #e8e8e6; color: #8b8a86; border-color: #dcdcda; cursor: not-allowed; }
     button.small { padding: .25rem .55rem; font-size: .8rem; }
     table { border-collapse: collapse; width: 100%; margin-top: .6rem; font-size: .88rem; }
     th, td { border-bottom: 1px solid #e5e5e5; padding: .5rem .55rem; text-align: left; vertical-align: top; }
@@ -23,6 +24,8 @@
     .model-boxes label { display: flex; align-items: center; gap: .3rem; }
     #new-key { background: #fef7e0; padding: .6rem; border-radius: 6px; margin-top: .8rem; word-break: break-all; display: none; }
     #error { color: #c5221f; margin-top: .8rem; white-space: pre-wrap; }
+    #login-error { color: #c5221f; margin-top: .8rem; max-width: 640px; line-height: 1.5; }
+    #login-error code { background: #f3f3f1; padding: .05rem .25rem; border-radius: 3px; }
     .muted { color: #777; }
     .bar { background: #eee; border-radius: 4px; height: 6px; width: 110px; overflow: hidden; margin-top: .25rem; }
     .bar i { display: block; height: 100%; background: #34a853; }
@@ -84,6 +87,7 @@
   <div id="login-view">
     <p>관리자 계정으로 로그인하세요.</p>
     <button class="primary" id="login-btn">Google로 로그인</button>
+    <div id="login-error"></div>
   </div>
 
   <div id="app-view" style="display:none">
@@ -283,6 +287,18 @@
     window.dispatchEvent(new Event("charts-ready"));
   </script>
   <script>
+    // 설정 파일을 안 채운 채 배포하면 로그인 버튼이 말없이 죽는다. 먼저 알려준다.
+    const cfgMissing = !window.FIREBASE_CONFIG
+      || Object.values(window.FIREBASE_CONFIG).some((v) => String(v).includes("REPLACE_ME"));
+    if (cfgMissing) {
+      document.getElementById("login-btn").disabled = true;
+      document.getElementById("login-error").innerHTML =
+        'Firebase가 아직 설정되지 않았습니다. <code>admin-ui/public/firebase-config.js</code>의 ' +
+        '<code>REPLACE_ME</code>를 Firebase 콘솔의 웹 앱 설정값으로 바꾸고, ' +
+        '<code>.env</code>의 <code>FIREBASE_PROJECT_ID</code>도 같은 프로젝트 ID로 맞춘 뒤 ' +
+        '<code>docker compose up -d --build admin-ui</code>로 다시 띄우세요. (README 참고)';
+    }
+
     firebase.initializeApp(window.FIREBASE_CONFIG);
     const auth = firebase.auth();
     const $ = (id) => document.getElementById(id);
@@ -297,7 +313,11 @@
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts.headers },
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || resp.status);
+      if (!resp.ok) {
+        const err = new Error(data.error || resp.status);
+        err.status = resp.status;
+        throw err;
+      }
       return data;
     }
 
@@ -452,16 +472,37 @@
     let resizeT;
     window.addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(refreshDashboard, 250); });
 
-    $("login-btn").onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    const LOGIN_HINT = {
+      "auth/invalid-api-key": "firebase-config.js의 apiKey가 올바르지 않습니다.",
+      "auth/unauthorized-domain": "이 주소가 Firebase 승인된 도메인에 없습니다. Firebase 콘솔 → Authentication → 설정 → 승인된 도메인에 추가하세요.",
+      "auth/operation-not-allowed": "Firebase 콘솔에서 Google 로그인 방법이 켜져 있지 않습니다.",
+      "auth/popup-blocked": "브라우저가 팝업을 막았습니다. 팝업을 허용해 주세요.",
+    };
+    $("login-btn").onclick = () =>
+      auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch((e) => {
+        if (e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") return;
+        $("login-error").textContent = (LOGIN_HINT[e.code] || e.message) + ` (${e.code || "오류"})`;
+      });
     $("logout-btn").onclick = () => auth.signOut();
 
     auth.onAuthStateChanged((user) => {
       $("login-view").style.display = user ? "none" : "";
       $("app-view").style.display = user ? "" : "none";
-      if (user) {
-        $("who").textContent = user.email;
-        loadModels().then(refreshKeys).then(refreshDashboard);
-      }
+      if (!user) return;
+      $("who").textContent = user.email;
+      $("login-error").textContent = "";
+      // 먼저 권한을 확인한다. ADMIN_EMAILS에 없는 계정이면 로그인 화면으로 되돌리고 이유를 보여준다.
+      api("/api/models").then(
+        () => loadModels().then(refreshKeys).then(refreshDashboard),
+        (e) => {
+          $("login-view").style.display = "";
+          $("app-view").style.display = "none";
+          $("login-error").textContent = e.status === 403
+            ? e.message + " — .env의 ADMIN_EMAILS에 이 계정을 추가한 뒤 컨테이너를 다시 시작하세요."
+            : "서버 연결 실패: " + e.message;
+          if (e.status === 403) auth.signOut();
+        }
+      );
     });
 
     // ---- 그룹 생성/수정/삭제 ----
