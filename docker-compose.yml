@@ -4,7 +4,7 @@ services:
     container_name: aiapi-litellm
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "${LITELLM_PORT:-4000}:4000"
     volumes:
       - ./litellm/config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -24,7 +24,7 @@ services:
     container_name: aiapi-admin-ui
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${ADMIN_UI_PORT:-3000}:3000"
     environment:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
       ADMIN_EMAILS: ${ADMIN_EMAILS}

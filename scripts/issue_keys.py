@@ -32,8 +32,12 @@ def issue_key(base_url: str, master_key: str, alias: str, budget: float,
             "Content-Type": "application/json",
         },
     )
-    with urllib.request.urlopen(req) as resp:
-        return json.load(resp)["key"]
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.load(resp)["key"]
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")[:200]
+        raise RuntimeError(f"HTTP {e.code}: {detail}") from None
 
 
 def main() -> None:
