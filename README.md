@@ -192,6 +192,11 @@ resp = client.chat.completions.create(model="gpt-4o-mini", messages=[...])
 예산이 소진되면 요청이 자동 차단된다. 사용량은 관리자 UI 또는
 LiteLLM 자체 대시보드(`http://NAS주소:4000/ui`, 마스터 키로 로그인)에서 확인.
 
+
+## Postgres 백업·복구
+
+절차·스크립트: [docs/postgres-backup.md](docs/postgres-backup.md) (`scripts/backup_postgres.sh`, `scripts/restore_postgres.sh`).
+
 ## 보안 메모
 
 - 실제 OpenAI 키와 마스터 키는 `.env`에만 존재하며 git에 커밋하지 않는다 (`.gitignore` 처리됨).
