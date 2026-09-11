@@ -111,6 +111,10 @@ docker compose up -d --build
   그 주소를 Firebase 승인된 도메인에도 추가한다. PC가 꺼지면 서비스도 꺼지므로 상시 운영은 NAS 쪽을 권장.
 - 중지: `docker compose down` / 로그 확인: `docker compose logs -f litellm`
 
+## NAS/PC 재확인 (이슈 #9)
+
+P0 [#2](https://github.com/progh2/aiapi-manager/issues/2)·[#3](https://github.com/progh2/aiapi-manager/issues/3)을 tarho.local / Synology / PC에서 다시 확인하는 런북: [docs/nas-pc-recheck.md](docs/nas-pc-recheck.md). 결과는 [이슈 #9](https://github.com/progh2/aiapi-manager/issues/9)에 붙인다.
+
 ## 사용량 대시보드와 예측
 
 관리자 UI 상단에서 기간(14~90일)과 예측 구간(7~30일)을 골라 볼 수 있다.
@@ -199,6 +203,7 @@ LiteLLM 자체 대시보드(`http://NAS주소:4000/ui`, 마스터 키로 로그�
 ## Postgres 백업·복구
 
 절차·스크립트: [docs/postgres-backup.md](docs/postgres-backup.md) (`scripts/backup_postgres.sh`, `scripts/restore_postgres.sh`).
+NAS/PC에서 키·조 UI까지 재확인하는 순서는 [docs/nas-pc-recheck.md](docs/nas-pc-recheck.md) (이슈 #9).
 
 ## 보안 메모
 
