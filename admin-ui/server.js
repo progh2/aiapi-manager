@@ -28,6 +28,11 @@ const app = express();
 app.use(express.json());
 app.use(express.static(__dirname + "/public"));
 
+// Compose healthcheck용. 인증 없이 프로세스 생존만 확인.
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 async function requireAdmin(req, res, next) {
   const token = (req.headers.authorization || "").replace(/^Bearer /, "");
   if (!token) return res.status(401).json({ error: "로그인이 필요합니다" });

@@ -19,7 +19,7 @@ LiteLLM Proxy (:4000) ──── Postgres (키·예산·사용량, 내부 전�
 
 | 경로 | 설명 |
 |---|---|
-| `docker-compose.yml` | LiteLLM + Postgres + admin-ui 세 컨테이너 |
+| `docker-compose.yml` | LiteLLM + Postgres + admin-ui 세 컨테이너. db·litellm·admin-ui 모두 healthcheck, `depends_on: service_healthy` |
 | `litellm/config.yaml` | 학생에게 노출할 모델 목록 |
 | `admin-ui/` | 관리자 웹 UI. Firebase 구글 로그인 → 그룹·키 관리, 사용량 대시보드 |
 | `admin-ui/public/charts.js` | 대시보드 차트(인라인 SVG, 외부 라이브러리 없음) |
@@ -86,6 +86,7 @@ DSM 7.2 이상의 **Container Manager** 기준. DS918+ 등 x86 기종에서 동�
 5. **동작 확인**
    - 관리자 UI: `http://NAS내부IP:3000` → Google 로그인 → 키 발급 테스트
    - 프록시: `http://NAS내부IP:4000/health/liveliness` 가 응답하면 정상
+   - 관리자 UI 헬스: `http://NAS내부IP:3000/health` → `{"status":"ok"}`
 6. **포트가 겹칠 때** — NMS/PartDB 등 기존 컨테이너가 3000/4000을 쓰고 있다면
    `docker-compose.yml`의 `ports`에서 왼쪽 숫자만 바꾼다 (예: `"14000:4000"`).
 7. **업데이트** — 저장소를 갱신(재업로드 또는 `git pull`)한 뒤 프로젝트 선택 → **동작 → 빌드**로 재빌드,
