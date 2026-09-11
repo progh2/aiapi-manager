@@ -31,6 +31,8 @@ LiteLLM Proxy (:4000) ──── Postgres (키·예산·사용량, 내부 전�
 
 ### 1. Firebase 설정 (관리자 로그인용)
 
+설치마다 빠뜨리지 않도록 [Firebase 설정 체크리스트](docs/firebase-checklist.md)를 따른다.
+
 1. [Firebase 콘솔](https://console.firebase.google.com)에서 **프로젝트 추가** (이름 예: `aiapi-manager`, 애널리틱스는 꺼도 됨)
 2. 왼쪽 메뉴 **빌드 → Authentication → 시작하기 → 로그인 방법** 탭에서 **Google** 활성화 (지원 이메일 선택 후 저장)
 3. **Authentication → 설정 → 승인된 도메인**에 관리자 UI 접속 주소를 추가
