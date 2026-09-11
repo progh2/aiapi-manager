@@ -16,6 +16,19 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      # 이미지에 curl이 없을 수 있어 python urllib 사용
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=4)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
     networks:
       - aiapi-internal
 
@@ -31,7 +44,21 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_BASE_URL: http://litellm:4000
     depends_on:
-      - litellm
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      # node:20 내장 fetch. alpine에 wget/curl 없음
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     networks:
       - aiapi-internal
 
