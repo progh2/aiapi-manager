@@ -79,6 +79,10 @@
     }
     details.tableview { margin-top: .6rem; font-size: .82rem; }
     details.tableview table { font-size: .8rem; }
+    .bulk-hint { margin: .2rem 0 0; font-size: .78rem; line-height: 1.45; }
+    .bulk-fail { margin-top: .55rem; font-size: .85rem; color: #c5221f; }
+    .bulk-fail ul { margin: .3rem 0 0; padding-left: 1.15rem; }
+    .bulk-fail li { margin: .15rem 0; }
   </style>
 </head>
 <body>
@@ -132,7 +136,7 @@
       <div class="charts-2">
         <div class="chart-box" style="margin-top:0">
           <h3>학생별 지출</h3>
-          <p class="cap">회색 트랙은 개인 예산, 색 막대는 사용액입니다.</p>
+          <p class="cap">회색 트랙은 개인 예산, 색 막대는 사용액입니다. 잔여가 있으면 오른쪽에 함께 표시됩니다.</p>
           <div id="chart-students"></div>
         </div>
         <div class="chart-box" style="margin-top:0">
@@ -215,9 +219,12 @@
         </div>
         <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(아무것도 안 고르면 전체/그룹 설정 따름)</span></div>
         <div id="model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
-        <div style="margin-top:.9rem; font-size:.82rem; color:#555">
-          여러 명 일괄 발급 <span class="muted">(한 줄에 <code>학번,이름</code> — 입력하면 위 별칭 대신 이 명단으로 발급)</span></div>
-        <textarea id="bulk" rows="4" style="width:100%; margin-top:.3rem" placeholder="20261001,홍길동&#10;20261002,김철수"></textarea>
+        <div style="margin-top:.9rem; font-size:.82rem; color:#555">여러 명 일괄 발급</div>
+        <p class="muted bulk-hint">
+          한 줄에 <code>학번,이름</code> (쉼표·탭·공백 구분). 예: <code>20261001,홍길동</code> → 별칭 <code>20261001-홍길동</code>.
+          명단을 넣으면 위 별칭 대신 이 목록으로 발급합니다. 빈 줄은 무시됩니다.
+        </p>
+        <textarea id="bulk" rows="4" style="width:100%; margin-top:.35rem" placeholder="20261001,홍길동&#10;20261002,김철수" spellcheck="false" autocomplete="off"></textarea>
         <div style="margin-top:.9rem"><button class="primary" type="submit">발급</button></div>
       </form>
       <div id="new-key"></div>
@@ -554,12 +561,24 @@
           });
           const ok = results.filter((r) => r.key);
           const fail = results.filter((r) => r.error);
-          const csv = "alias,api_key\n" + ok.map((r) => `${r.alias},${r.key}`).join("\n");
-          const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+          const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+          }[c]));
           box.style.display = "block";
-          box.innerHTML = `${ok.length}명 발급 완료 — <a href="${url}" download="issued_keys.csv">키 목록 CSV 다운로드</a>`
-            + ` (이 페이지를 벗어나면 다시 받을 수 없음)`
-            + (fail.length ? `<br>실패 ${fail.length}건: ${fail.map((r) => `${r.alias} (${r.error})`).join(", ")}` : "");
+          let html = `<b>일괄 발급 결과</b> — 성공 ${ok.length}명`
+            + (fail.length ? ` · <span class="badge red">실패 ${fail.length}건</span>` : "");
+          if (ok.length) {
+            const csv = "alias,api_key\n" + ok.map((r) => `${r.alias},${r.key}`).join("\n");
+            const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+            html += `<br><a href="${url}" download="issued_keys.csv">키 목록 CSV 다운로드</a>`
+              + ` <span class="muted">(이 페이지를 벗어나면 다시 받을 수 없음)</span>`;
+          }
+          if (fail.length) {
+            html += `<div class="bulk-fail">실패 ${fail.length}건`
+              + `<ul>${fail.map((r) => `<li><code>${esc(r.alias)}</code> — ${esc(r.error)}</li>`).join("")}</ul>`
+              + `</div>`;
+          }
+          box.innerHTML = html;
           $("bulk").value = "";
         } else {
           const alias = $("alias").value.trim();
