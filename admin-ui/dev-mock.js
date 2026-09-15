@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Firebase·LiteLLM 없이 학급 일괄 부여 UI를 로컬에서 확인한다. 배포에 쓰지 않는다.
+// Firebase·LiteLLM 없이 학급 일괄 부여·만료 회수 UI를 로컬에서 확인한다. 배포에 쓰지 않는다.
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
+const { revokeKeys } = require("./lib/key-revoke");
 
 const PORT = Number(process.env.PORT || 3456);
 const app = express();
@@ -20,10 +21,95 @@ app.get("/", (_req, res) => {
 app.get("/roster.js", (_req, res) => {
   res.type("application/javascript").sendFile(path.join(__dirname, "lib/roster.js"));
 });
+app.get("/key-revoke.js", (_req, res) => {
+  res.type("application/javascript").sendFile(path.join(__dirname, "lib/key-revoke.js"));
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 const teams = [];
 const keys = [];
+
+function seedDemo() {
+  teams.push({
+    team_id: "team-1",
+    team_alias: "3학년A반",
+    max_budget: 50,
+    spend: 4.2,
+    budget_duration: "30d",
+  });
+  teams.push({
+    team_id: "team-2",
+    team_alias: "캠프1일차",
+    max_budget: 20,
+    spend: 0.5,
+    budget_duration: null,
+  });
+  const add = (rec) => {
+    keys.push({
+      spend: 0.1,
+      models: ["gpt-4o-mini"],
+      rpm_limit: 10,
+      tpm_limit: null,
+      budget_duration: "30d",
+      blocked: false,
+      ...rec,
+      key: rec.token,
+    });
+  };
+  add({
+    token: "sk-mock-20261001-홍길동",
+    key_alias: "20261001-홍길동",
+    team_id: "team-1",
+    max_budget: 2,
+    spend: 1.2,
+    expires: new Date(Date.now() - 3 * 86400000).toISOString(),
+  });
+  add({
+    token: "sk-mock-20261002-김철수",
+    key_alias: "20261002-김철수",
+    team_id: "team-1",
+    max_budget: 2,
+    spend: 2,
+    expires: new Date(Date.now() - 86400000).toISOString(),
+  });
+  add({
+    token: "sk-mock-20261003-이영희",
+    key_alias: "20261003-이영희",
+    team_id: "team-1",
+    max_budget: 2,
+    spend: 0.4,
+    expires: new Date(Date.now() + 3 * 86400000).toISOString(),
+  });
+  add({
+    token: "sk-mock-20261004-박민수",
+    key_alias: "20261004-박민수",
+    team_id: "team-1",
+    max_budget: 2,
+    spend: 0.8,
+    expires: new Date(Date.now() + 90 * 86400000).toISOString(),
+  });
+  add({
+    token: "sk-mock-camp-expired",
+    key_alias: "camp-만료게스트",
+    team_id: "team-2",
+    max_budget: 1,
+    spend: 0.3,
+    expires: new Date(Date.now() - 2 * 86400000).toISOString(),
+    blocked: true,
+  });
+  add({
+    token: "sk-mock-unlimited",
+    key_alias: "교사-시연",
+    team_id: null,
+    max_budget: null,
+    spend: 0,
+    expires: null,
+    budget_duration: null,
+    models: [],
+    rpm_limit: null,
+  });
+}
+seedDemo();
 
 async function litellm(p, method = "GET", body) {
   if (p === "/team/list") return { teams };
@@ -77,9 +163,29 @@ async function litellm(p, method = "GET", body) {
     return rec;
   }
   if (p.startsWith("/key/list")) return { keys, total_pages: 1 };
-  if (p === "/key/update") return body;
-  if (p === "/key/block" || p === "/key/unblock") return { blocked: p === "/key/block" };
-  if (p === "/key/delete") return { deleted: 1 };
+  if (p === "/key/update") {
+    const k = keys.find((x) => x.token === body.key);
+    if (k) Object.assign(k, body);
+    return k || body;
+  }
+  if (p === "/key/block" || p === "/key/unblock") {
+    const k = keys.find((x) => x.token === body.key);
+    if (!k) throw new Error("키 없음");
+    k.blocked = p === "/key/block";
+    return { blocked: k.blocked };
+  }
+  if (p === "/key/delete") {
+    let deleted = 0;
+    for (const tok of body.keys || []) {
+      const i = keys.findIndex((x) => x.token === tok);
+      if (i >= 0) {
+        keys.splice(i, 1);
+        deleted += 1;
+      }
+    }
+    if (!deleted) throw new Error("키 없음");
+    return { deleted };
+  }
   if (p === "/v1/models") return { data: [{ id: "gpt-4o-mini" }, { id: "gpt-4o" }] };
   if (p.startsWith("/user/daily/activity")) return { results: [], metadata: { total_pages: 1 } };
   throw new Error("mock 미구현: " + p);
@@ -122,9 +228,29 @@ app.post("/api/keys/bulk", async (req, res) => {
     res.status(e.status || 502).json({ error: e.message });
   }
 });
-app.post("/api/keys/update", (req, res) => res.json({ ok: true }));
-app.post("/api/keys/block", (req, res) => res.json({ ok: true }));
-app.post("/api/keys/delete", (req, res) => res.json({ ok: true }));
+app.post("/api/keys/update", (req, res) => {
+  litellm("/key/update", "POST", { key: req.body.token, ...req.body })
+    .then((d) => res.json(d))
+    .catch((e) => res.status(502).json({ error: e.message }));
+});
+app.post("/api/keys/block", (req, res) => {
+  const path = req.body.blocked ? "/key/block" : "/key/unblock";
+  litellm(path, "POST", { key: req.body.token })
+    .then((d) => res.json(d))
+    .catch((e) => res.status(502).json({ error: e.message }));
+});
+app.post("/api/keys/delete", (req, res) => {
+  litellm("/key/delete", "POST", { keys: req.body.keys })
+    .then((d) => res.json(d))
+    .catch((e) => res.status(502).json({ error: e.message }));
+});
+app.post("/api/keys/revoke", async (req, res) => {
+  try {
+    res.json(await revokeKeys(req.body, { litellm }));
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
 app.get("/api/analytics", (_req, res) => {
   const dates = [];
   const daily = [];
@@ -141,5 +267,5 @@ app.get("/api/analytics", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄 예산 데모)`);
+  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄 예산·만료 회수 데모)`);
 });

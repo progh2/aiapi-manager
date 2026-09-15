@@ -4,6 +4,7 @@
 const express = require("express");
 const admin = require("firebase-admin");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
+const { revokeKeys } = require("./lib/key-revoke");
 
 const {
   FIREBASE_PROJECT_ID,
@@ -31,6 +32,9 @@ app.use(express.static(__dirname + "/public"));
 // 브라우저 명단 파서가 서버와 같은 규칙을 쓰도록 lib 파일을 그대로 제공한다.
 app.get("/roster.js", (_req, res) => {
   res.type("application/javascript").sendFile(__dirname + "/lib/roster.js");
+});
+app.get("/key-revoke.js", (_req, res) => {
+  res.type("application/javascript").sendFile(__dirname + "/lib/key-revoke.js");
 });
 
 // Compose healthcheck용. 인증 없이 프로세스 생존만 확인.
@@ -350,6 +354,20 @@ app.post("/api/keys/delete", requireAdmin, async (req, res) => {
     console.log(`${req.adminEmail} 이(가) 키 삭제: ${keys.length}개`);
   } catch (e) {
     res.status(502).json({ error: e.message });
+  }
+});
+
+// 학기·캠프 종료 후 일괄 차단/회수. 개별 block·delete 와 같은 LiteLLM 경로.
+app.post("/api/keys/revoke", requireAdmin, async (req, res) => {
+  try {
+    const out = await revokeKeys(req.body, { litellm });
+    const n = out.results.length;
+    const fail = out.results.filter((r) => r.error).length;
+    const verb = out.action === "delete" ? "회수" : "차단";
+    console.log(`${req.adminEmail} 이(가) 일괄 ${verb}: ${n}개 (실패 ${fail})`);
+    res.json(out);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
   }
 });
 
