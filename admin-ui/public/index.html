@@ -461,8 +461,9 @@
       $("error").textContent = "";
       try {
         keyCache = (await api("/api/keys")).keys || [];
+        // 팀을 먼저 받아 별칭을 채운 뒤 키 표를 그린다 (일괄 부여로 방금 만든 그룹 포함)
+        await refreshTeams();
         renderKeys();
-        refreshTeams();
       } catch (e) { $("error").textContent = e.message; }
     }
 
