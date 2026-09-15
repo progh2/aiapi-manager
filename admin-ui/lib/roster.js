@@ -175,7 +175,8 @@ function durationFromExpiryDate(dateStr, now = new Date()) {
     err.status = 400;
     throw err;
   }
-  return `${Math.max(1, Math.ceil(ms / 1000))}s`;
+  // floor: 23:59:59.999를 올림하면 다음 날 00:00이 되어 달력 만료일과 어긋난다.
+  return `${Math.max(1, Math.floor(ms / 1000))}s`;
 }
 
 const Roster = {

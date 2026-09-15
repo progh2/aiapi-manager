@@ -80,8 +80,17 @@ describe("durationFromExpiryDate", () => {
     const dur = durationFromExpiryDate("2026-12-31", now);
     assert.match(dur, /^\d+s$/);
     const end = new Date(2026, 11, 31, 23, 59, 59, 999);
-    const expected = Math.ceil((end - now) / 1000);
+    const expected = Math.floor((end - now) / 1000);
     assert.equal(dur, `${expected}s`);
+  });
+
+  it("초 계산이 달력 만료일 밖으로 넘어가지 않는다", () => {
+    const now = new Date(2026, 8, 15, 15, 0, 0, 250);
+    const dur = durationFromExpiryDate("2026-12-31", now);
+    const expires = new Date(now.getTime() + Number(dur.slice(0, -1)) * 1000);
+    assert.equal(expires.getFullYear(), 2026);
+    assert.equal(expires.getMonth(), 11);
+    assert.equal(expires.getDate(), 31);
   });
 
   it("지난 날짜는 거절한다", () => {

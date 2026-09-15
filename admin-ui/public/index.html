@@ -724,8 +724,10 @@
         const rowCls = r.key ? "result-ok-row" : "result-fail-row";
         const status = r.key ? '<span class="badge" style="background:#e6f4ea;color:#137333">성공</span>'
           : '<span class="badge red">실패</span>';
-        const expiry = r.expires ? new Date(r.expires).toLocaleString("ko-KR")
-          : (out.expires || (out.duration ? out.duration : "—"));
+        const expiry = out.expires
+          ? out.expires
+          : (r.expires ? new Date(r.expires).toLocaleString("ko-KR")
+            : (out.duration ? out.duration : "—"));
         const detail = r.key
           ? `<code>${esc(r.key)}</code>`
           : `<span class="result-fail">${esc(r.error)}</span>`;
