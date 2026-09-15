@@ -142,17 +142,23 @@ docker compose up -d --build
 관리자 UI의 **그룹 관리** 영역에서 그룹을 만들고(예산·리셋 주기·RPM/TPM 지정),
 키 발급 시 **소속 그룹**을 고르면 그 그룹에 들어간다. 키 목록은 그룹으로 필터링된다.
 
-### 여러 학생 한 번에 추가
+### 학급 일괄 예산 할당
 
-관리자 UI의 **여러 명 일괄 발급** 칸에 명단을 한 줄에 한 명씩 붙여넣는다.
+관리자 UI의 **학급 일괄 예산 할당**에서 조/학급·인당 예산·만료일(달력)을 고른 뒤 명단을 넣는다.
+
+- **CSV 파일**을 올리거나, 한 줄에 한 명씩 붙여넣는다
+- 헤더 `학번,이름` 과 CLI와 같은 `name,student_id` 둘 다 된다. 헤더가 없으면 첫 칸이 숫자일 때 학번으로 본다
+- 새 그룹 이름을 적으면 없는 반은 그때 만든다
+- 만료일을 고르면 그날 끝까지로 LiteLLM `duration`을 계산한다 (`/key/generate`는 상대 기간만 받음)
 
 ```
+학번,이름
 20261001,홍길동
 20261002,김철수
 ```
 
-발급이 끝나면 `학번-이름,키` 형식의 **CSV 다운로드 링크**가 뜬다. 키는 이때만 볼 수 있으므로 반드시 내려받는다.
-이미 있는 별칭은 건너뛰고 나머지는 계속 발급되므로, 명단에 기존 학생이 섞여 있어도 안전하다.
+끝나면 **행마다 성공/실패**가 표로 나오고, 성공한 키는 `alias,student_id,name,api_key` CSV로 받을 수 있다.
+키는 이때만 볼 수 있으므로 반드시 내려받는다. 이미 있는 별칭은 실패로 남고 나머지는 계속 발급된다.
 
 ## 학생 키 일괄 발급 (CLI)
 
@@ -162,25 +168,27 @@ python3 scripts/issue_keys.py students.csv \
   --budget 2.0 --models gpt-4o-mini --output issued_keys.csv
 ```
 
-`students.csv`는 `name,student_id` 헤더 형식 (`students.example.csv` 참고).
-발급 결과 `issued_keys.csv`를 학생들에게 개별 배포한 뒤 삭제한다.
+`students.csv`는 `name,student_id` 또는 `학번,이름` 헤더 (`students.example.csv` 참고).
+발급 결과 `issued_keys.csv`를 학생들에게 개별 배포한 뒤 삭제한다. 끝에 성공/실패 건수가 출력된다.
 
-그룹에 넣으면서 학기 단위로 발급하려면:
+그룹에 넣으면서 학기 종료일로 발급하려면:
 
 ```sh
 python3 scripts/issue_keys.py students.csv \
   --base-url http://NAS주소:4000 --master-key $LITELLM_MASTER_KEY \
   --team 3학년A반 --team-budget 50 \
-  --budget 2.0 --budget-duration 30d --duration 90d --rpm 10 --output issued_keys.csv
+  --budget 2.0 --budget-duration 30d --expires 2026-12-31 --rpm 10 --output issued_keys.csv
 ```
 
 `--team`은 같은 이름의 그룹이 있으면 재사용하고, 없으면 새로 만든다.
+`--expires`가 있으면 `--duration`보다 우선한다 (그날 23:59:59까지).
 
 | 옵션 | 의미 |
 |---|---|
 | `--budget` | 학생 1명당 예산(USD) |
 | `--budget-duration` | 예산 리셋 주기 (`1d`/`7d`/`30d`). 생략하면 총액 한도 |
 | `--duration` | 키 만료 기한 (`90d` = 한 학기). 생략하면 무기한 |
+| `--expires` | 달력 만료일 (`YYYY-MM-DD`). LiteLLM `duration`으로 변환 |
 | `--rpm` / `--tpm` | 분당 요청 수 / 토큰 수 제한 |
 | `--team` / `--team-budget` | 소속 그룹과 그룹 전체 예산 |
 

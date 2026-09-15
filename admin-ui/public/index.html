@@ -79,6 +79,15 @@
     }
     details.tableview { margin-top: .6rem; font-size: .82rem; }
     details.tableview table { font-size: .8rem; }
+    .bulk-hint { margin: .2rem 0 .45rem; font-size: .78rem; line-height: 1.45; }
+    .bulk-preview { margin: .45rem 0 0; font-size: .82rem; }
+    .bulk-actions { margin-top: .9rem; display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+    .result-ok { color: #137333; }
+    .result-fail { color: #c5221f; }
+    tr.result-fail-row td { background: #fce8e6; }
+    tr.result-ok-row td { background: #e6f4ea; }
+    .file-row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-top: .7rem; font-size: .82rem; color: #555; }
+    code { background: #f3f3f1; padding: .05rem .25rem; border-radius: 3px; }
   </style>
 </head>
 <body>
@@ -177,10 +186,68 @@
     </fieldset>
 
     <fieldset>
-      <legend>키 발급</legend>
+      <legend>학급 일괄 예산 할당</legend>
+      <p class="muted bulk-hint">
+        조/학급을 고르고 인당 예산·만료일을 정한 뒤, 명단 CSV 또는 <code>학번,이름</code> 붙여넣기로
+        전원에게 <b>같은 금액·같은 기간</b>의 가상 키를 부여합니다.
+        헤더 <code>name,student_id</code> 와 <code>학번,이름</code> 모두 됩니다.
+      </p>
+      <form id="class-form">
+        <div class="form-grid">
+          <label>조/학급
+            <select id="bulk-team">
+              <option value="">그룹 없음</option>
+              <option value="__new__">+ 새 그룹 만들기</option>
+            </select>
+          </label>
+          <label id="bulk-team-name-wrap" style="display:none">새 그룹 이름
+            <input id="bulk-team-name" placeholder="예: 3학년A반, 캡스톤1조">
+          </label>
+          <label>인당 예산 (USD) *
+            <input id="bulk-budget" type="number" step="0.5" min="0" value="2" required>
+          </label>
+          <label>만료일
+            <input id="bulk-expires" type="date">
+          </label>
+          <label>또는 상대 만료
+            <select id="bulk-duration">
+              <option value="">만료일 사용 / 무기한</option>
+              <option value="7d">7일</option>
+              <option value="30d">30일</option>
+              <option value="90d">90일 (한 학기)</option>
+              <option value="120d">120일</option>
+            </select>
+          </label>
+          <label>예산 리셋 주기
+            <select id="bulk-budget-duration">
+              <option value="">없음 (총액 한도)</option>
+              <option value="1d">매일</option>
+              <option value="7d">매주</option>
+              <option value="30d">매월(30일)</option>
+            </select>
+          </label>
+        </div>
+        <p class="muted bulk-hint" id="bulk-expiry-hint"></p>
+        <div class="file-row">
+          <span>명단 CSV</span>
+          <input id="bulk-file" type="file" accept=".csv,text/csv,text/plain,.txt">
+          <span class="muted">또는 아래에 붙여넣기</span>
+        </div>
+        <textarea id="bulk-roster" rows="6" style="width:100%; margin-top:.35rem" spellcheck="false" autocomplete="off" placeholder="학번,이름&#10;20261001,홍길동&#10;20261002,김철수&#10;&#10;또는&#10;name,student_id&#10;홍길동,20261001"></textarea>
+        <div id="bulk-preview" class="bulk-preview muted"></div>
+        <div class="bulk-actions">
+          <button class="primary" type="submit" id="bulk-submit">일괄 부여</button>
+          <span class="muted">이미 있는 별칭은 실패로 남고 나머지는 계속 발급됩니다.</span>
+        </div>
+      </form>
+      <div id="bulk-result"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>키 발급 (1명)</legend>
       <form id="issue-form">
         <div class="form-grid">
-          <label>키 별칭 (1명 발급)
+          <label>키 별칭
             <input id="alias" placeholder="예: 20261001-홍길동">
           </label>
           <label>소속 그룹
@@ -206,6 +273,9 @@
               <option value="120d">120일</option>
             </select>
           </label>
+          <label>만료일 (달력)
+            <input id="expires" type="date">
+          </label>
           <label>분당 요청 제한 (RPM)
             <input id="rpm" type="number" min="1" placeholder="비우면 무제한">
           </label>
@@ -215,9 +285,7 @@
         </div>
         <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(아무것도 안 고르면 전체/그룹 설정 따름)</span></div>
         <div id="model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
-        <div style="margin-top:.9rem; font-size:.82rem; color:#555">
-          여러 명 일괄 발급 <span class="muted">(한 줄에 <code>학번,이름</code> — 입력하면 위 별칭 대신 이 명단으로 발급)</span></div>
-        <textarea id="bulk" rows="4" style="width:100%; margin-top:.3rem" placeholder="20261001,홍길동&#10;20261002,김철수"></textarea>
+        <p class="muted bulk-hint">여러 명은 위 <b>학급 일괄 예산 할당</b>에서 CSV 또는 명단으로 부여하세요.</p>
         <div style="margin-top:.9rem"><button class="primary" type="submit">발급</button></div>
       </form>
       <div id="new-key"></div>
@@ -281,6 +349,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
+  <script src="roster.js"></script>
   <script type="module">
     import { dailyBarChart, cumulativeChart, rankBarChart } from "./charts.js";
     window.CHARTS = { dailyBarChart, cumulativeChart, rankBarChart };
@@ -288,8 +357,10 @@
   </script>
   <script>
     // 설정 파일을 안 채운 채 배포하면 로그인 버튼이 말없이 죽는다. 먼저 알려준다.
-    const cfgMissing = !window.FIREBASE_CONFIG
-      || Object.values(window.FIREBASE_CONFIG).some((v) => String(v).includes("REPLACE_ME"));
+    // ADMIN_UI_MOCK 은 로컬 데모 서버만 켠다. 배포 이미지에서는 쓰이지 않는다.
+    const MOCK = window.ADMIN_UI_MOCK === true;
+    const cfgMissing = !MOCK && (!window.FIREBASE_CONFIG
+      || Object.values(window.FIREBASE_CONFIG).some((v) => String(v).includes("REPLACE_ME")));
     if (cfgMissing) {
       document.getElementById("login-btn").disabled = true;
       document.getElementById("login-error").innerHTML =
@@ -299,8 +370,13 @@
         '<code>docker compose up -d --build admin-ui</code>로 다시 띄우세요. (README 참고)';
     }
 
-    firebase.initializeApp(window.FIREBASE_CONFIG);
-    const auth = firebase.auth();
+    if (!MOCK) firebase.initializeApp(window.FIREBASE_CONFIG);
+    const auth = MOCK ? {
+      currentUser: { email: "teacher@school.kr", getIdToken: async () => "mock" },
+      onAuthStateChanged(cb) { queueMicrotask(() => cb({ email: "teacher@school.kr" })); },
+      signOut() {},
+      signInWithPopup() { return Promise.resolve(); },
+    } : firebase.auth();
     const $ = (id) => document.getElementById(id);
     let availableModels = [];
     let keyCache = [];
@@ -368,12 +444,16 @@
               <button class="small" data-ti="${i}" data-act="t-del">삭제</button>
             </td>
           </tr>`).join("") || '<tr><td colspan="6" class="muted">그룹 없음</td></tr>';
-        for (const sel of [$("team-select"), $("filter-team")]) {
+        for (const sel of [$("team-select"), $("filter-team"), $("bulk-team")]) {
           const cur = sel.value;
-          sel.innerHTML = `<option value="">${sel.id === "filter-team" ? "전체 그룹" : "그룹 없음"}</option>` +
+          const empty = sel.id === "filter-team" ? "전체 그룹" : "그룹 없음";
+          const extra = sel.id === "bulk-team"
+            ? `<option value="__new__">+ 새 그룹 만들기</option>` : "";
+          sel.innerHTML = `<option value="">${empty}</option>` + extra +
             teamCache.map((t) => `<option value="${t.team_id}">${t.team_alias || t.team_id.slice(0, 8)}</option>`).join("");
           sel.value = cur;
         }
+        toggleBulkTeamName();
       } catch (e) { $("error").textContent = e.message; }
     }
 
@@ -524,7 +604,7 @@
       } catch (e) { $("error").textContent = e.message; }
     };
 
-    // ---- 발급 (단건 + 일괄) ----
+    // ---- 발급 (1명) ----
     function issueSettings() {
       const models = [...document.querySelectorAll('input[name="models"]:checked')].map((c) => c.value);
       return {
@@ -532,6 +612,7 @@
         budget: $("budget").value,
         budget_duration: $("budget-duration").value,
         duration: $("duration").value,
+        expires: $("expires").value,
         rpm_limit: $("rpm").value,
         tpm_limit: $("tpm").value,
         models,
@@ -540,40 +621,170 @@
 
     $("issue-form").onsubmit = async (ev) => {
       ev.preventDefault();
-      const bulkText = $("bulk").value.trim();
       const box = $("new-key");
       try {
-        if (bulkText) {
-          const students = bulkText.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
-            const [id, name] = l.split(/[,\t ]+/);
-            return { alias: name ? `${id}-${name}` : id };
-          });
-          const { results } = await api("/api/keys/bulk", {
-            method: "POST",
-            body: JSON.stringify({ students, ...issueSettings() }),
-          });
-          const ok = results.filter((r) => r.key);
-          const fail = results.filter((r) => r.error);
-          const csv = "alias,api_key\n" + ok.map((r) => `${r.alias},${r.key}`).join("\n");
-          const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-          box.style.display = "block";
-          box.innerHTML = `${ok.length}명 발급 완료 — <a href="${url}" download="issued_keys.csv">키 목록 CSV 다운로드</a>`
-            + ` (이 페이지를 벗어나면 다시 받을 수 없음)`
-            + (fail.length ? `<br>실패 ${fail.length}건: ${fail.map((r) => `${r.alias} (${r.error})`).join(", ")}` : "");
-          $("bulk").value = "";
-        } else {
-          const alias = $("alias").value.trim();
-          if (!alias) throw new Error("별칭을 입력하거나 일괄 명단을 붙여넣으세요");
-          const data = await api("/api/keys", {
-            method: "POST",
-            body: JSON.stringify({ alias, ...issueSettings() }),
-          });
-          box.style.display = "block";
-          box.textContent = `발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}`;
-          $("alias").value = "";
+        const alias = $("alias").value.trim();
+        if (!alias) throw new Error("별칭을 입력하세요. 여러 명은 학급 일괄 예산 할당을 사용하세요");
+        const data = await api("/api/keys", {
+          method: "POST",
+          body: JSON.stringify({ alias, ...issueSettings() }),
+        });
+        box.style.display = "block";
+        box.textContent = `발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}`;
+        $("alias").value = "";
+        refreshKeys();
+      } catch (e) { $("error").textContent = e.message; }
+    };
+
+    // ---- 학급 일괄 예산 할당 ----
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+
+    function toggleBulkTeamName() {
+      $("bulk-team-name-wrap").style.display = $("bulk-team").value === "__new__" ? "" : "none";
+    }
+    $("bulk-team").onchange = toggleBulkTeamName;
+
+    function todayYmd() {
+      const d = new Date();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${d.getFullYear()}-${m}-${day}`;
+    }
+    $("bulk-expires").min = todayYmd();
+    $("expires").min = todayYmd();
+
+    function parseBulkRoster() {
+      if (!window.Roster) return { students: [], errors: [{ error: "명단 파서를 불러오지 못했습니다" }] };
+      return Roster.parseRoster($("bulk-roster").value);
+    }
+
+    function updateBulkPreview() {
+      const { students, errors } = parseBulkRoster();
+      const budget = $("bulk-budget").value;
+      const expires = $("bulk-expires").value;
+      const duration = $("bulk-duration").value;
+      const names = students.slice(0, 8).map((s) => s.alias).join(", ");
+      const more = students.length > 8 ? ` 외 ${students.length - 8}명` : "";
+      let expiry = "무기한";
+      if (expires) expiry = `${expires} 당일 종료`;
+      else if (duration) expiry = duration;
+      $("bulk-preview").innerHTML = students.length
+        ? `미리보기 <b>${students.length}명</b> · 인당 $${esc(budget || "0")} · ${esc(expiry)}`
+          + (names ? `<br><span class="muted">${esc(names)}${esc(more)}</span>` : "")
+          + (errors.length ? `<br><span class="result-fail">파싱 실패 ${errors.length}줄</span>` : "")
+        : (errors.length
+          ? `<span class="result-fail">파싱 실패 ${errors.length}줄</span>`
+          : "명단 CSV를 올리거나 붙여넣으면 미리보기가 나타납니다.");
+      $("bulk-expiry-hint").textContent = expires && duration
+        ? "만료일이 있으면 달력 날짜를 쓰고, 상대 만료는 무시합니다."
+        : "";
+    }
+    $("bulk-roster").addEventListener("input", updateBulkPreview);
+    $("bulk-budget").addEventListener("input", updateBulkPreview);
+    $("bulk-expires").addEventListener("change", updateBulkPreview);
+    $("bulk-duration").addEventListener("change", updateBulkPreview);
+    $("bulk-file").addEventListener("change", () => {
+      const f = $("bulk-file").files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        $("bulk-roster").value = String(reader.result || "");
+        updateBulkPreview();
+      };
+      reader.readAsText(f, "utf-8");
+    });
+    updateBulkPreview();
+
+    function renderBulkResults(out) {
+      const results = out.results || [];
+      const ok = results.filter((r) => r.key);
+      const fail = results.filter((r) => r.error);
+      const box = $("bulk-result");
+      box.style.display = "block";
+      let html = `<p style="margin:.8rem 0 .4rem"><b>일괄 부여 결과</b> — `
+        + `<span class="result-ok">성공 ${ok.length}명</span>`
+        + (fail.length ? ` · <span class="badge red">실패 ${fail.length}건</span>` : "")
+        + (out.max_budget != null ? ` · 인당 $${esc(out.max_budget)}` : "")
+        + (out.expires ? ` · 만료 ${esc(out.expires)}` : "")
+        + (out.team_created ? ` · 그룹 생성됨` : "")
+        + `</p>`;
+      if (ok.length) {
+        const csv = "alias,student_id,name,api_key\n" + ok.map((r) =>
+          [r.alias, r.student_id || "", r.name || "", r.key].join(",")).join("\n");
+        const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+        html += `<p class="bulk-hint"><a href="${url}" download="issued_keys.csv">키 목록 CSV 다운로드</a>`
+          + ` <span class="muted">(이 페이지를 벗어나면 다시 받을 수 없음)</span></p>`;
+      }
+      html += `<table><thead><tr>`
+        + `<th>상태</th><th>별칭</th><th>학번</th><th>이름</th><th>예산</th><th>만료</th><th>키 / 오류</th>`
+        + `</tr></thead><tbody>`;
+      for (const r of results) {
+        const rowCls = r.key ? "result-ok-row" : "result-fail-row";
+        const status = r.key ? '<span class="badge" style="background:#e6f4ea;color:#137333">성공</span>'
+          : '<span class="badge red">실패</span>';
+        const expiry = out.expires
+          ? out.expires
+          : (r.expires ? new Date(r.expires).toLocaleString("ko-KR")
+            : (out.duration ? out.duration : "—"));
+        const detail = r.key
+          ? `<code>${esc(r.key)}</code>`
+          : `<span class="result-fail">${esc(r.error)}</span>`;
+        html += `<tr class="${rowCls}"><td>${status}</td>`
+          + `<td><code>${esc(r.alias)}</code></td>`
+          + `<td>${esc(r.student_id || "")}</td>`
+          + `<td>${esc(r.name || "")}</td>`
+          + `<td>${r.max_budget != null ? "$" + r.max_budget : (out.max_budget != null ? "$" + out.max_budget : "—")}</td>`
+          + `<td>${esc(expiry)}</td>`
+          + `<td>${detail}</td></tr>`;
+      }
+      html += `</tbody></table>`;
+      box.innerHTML = html;
+    }
+
+    $("class-form").onsubmit = async (ev) => {
+      ev.preventDefault();
+      $("error").textContent = "";
+      const { students, errors } = parseBulkRoster();
+      if (!students.length && !errors.length) {
+        $("error").textContent = "명단 CSV를 올리거나 학번,이름을 붙여넣으세요";
+        return;
+      }
+      const teamSel = $("bulk-team").value;
+      const payload = {
+        csv: $("bulk-roster").value,
+        budget: $("bulk-budget").value,
+        budget_duration: $("bulk-budget-duration").value,
+        duration: $("bulk-duration").value,
+        expires: $("bulk-expires").value,
+      };
+      if (teamSel === "__new__") {
+        const name = $("bulk-team-name").value.trim();
+        if (!name) {
+          $("error").textContent = "새 그룹 이름을 입력하세요";
+          return;
+        }
+        payload.team = name;
+      } else if (teamSel) {
+        payload.team_id = teamSel;
+      }
+      const btn = $("bulk-submit");
+      btn.disabled = true;
+      try {
+        const out = await api("/api/keys/bulk", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        renderBulkResults(out);
+        if (out.results.some((r) => r.key)) {
+          $("bulk-roster").value = "";
+          $("bulk-file").value = "";
+          updateBulkPreview();
         }
         refreshKeys();
       } catch (e) { $("error").textContent = e.message; }
+      finally { btn.disabled = false; }
     };
 
     // ---- 수정 다이얼로그 (키/그룹 공용) ----
