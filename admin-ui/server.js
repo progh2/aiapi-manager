@@ -3,6 +3,7 @@
 // LITELLM_MASTER_KEY는 이 서버에만 존재하며 브라우저로 나가지 않는다.
 const express = require("express");
 const admin = require("firebase-admin");
+const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 
 const {
   FIREBASE_PROJECT_ID,
@@ -25,8 +26,12 @@ const adminEmails = new Set(
 );
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(express.static(__dirname + "/public"));
+// 브라우저 명단 파서가 서버와 같은 규칙을 쓰도록 lib 파일을 그대로 제공한다.
+app.get("/roster.js", (_req, res) => {
+  res.type("application/javascript").sendFile(__dirname + "/lib/roster.js");
+});
 
 // Compose healthcheck용. 인증 없이 프로세스 생존만 확인.
 app.get("/health", (_req, res) => {
@@ -63,17 +68,10 @@ async function litellm(path, method = "GET", body) {
   return data;
 }
 
-// 발급/수정 공통: 클라이언트 입력에서 LiteLLM 키 파라미터만 추려 만든다
+// 발급/수정 공통: 클라이언트 입력에서 LiteLLM 키 파라미터만 추려 만든다.
+// expires(YYYY-MM-DD)가 있으면 LiteLLM이 받는 duration(초)으로 바꾼다.
 function keyParams(body) {
-  const p = {};
-  if (body.budget !== undefined && body.budget !== "") p.max_budget = Number(body.budget);
-  if (body.budget_duration) p.budget_duration = body.budget_duration;   // 예산 리셋 주기: "1d"|"7d"|"30d"
-  if (body.duration) p.duration = body.duration;                        // 키 만료: "30d" 등
-  if (Array.isArray(body.models)) p.models = body.models;               // []이면 전체 허용
-  if (body.rpm_limit) p.rpm_limit = Number(body.rpm_limit);
-  if (body.tpm_limit) p.tpm_limit = Number(body.tpm_limit);
-  if (body.max_parallel_requests) p.max_parallel_requests = Number(body.max_parallel_requests);
-  return p;
+  return keyGenerateParams(body);
 }
 
 // ---- 그룹(LiteLLM Team) 관리 ----
@@ -125,27 +123,18 @@ app.post("/api/teams/delete", requireAdmin, async (req, res) => {
   }
 });
 
-// 학생 일괄 추가: 명단 배열을 받아 키를 순차 발급하고 결과(키 포함)를 돌려준다
+// 학급 일괄 예산 부여: students[] 또는 csv 텍스트.
+// 조/학급은 team_id 또는 team(이름, 없으면 생성). 행별 성공/실패를 돌려준다.
 app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
-  const { students, ...defaults } = req.body;
-  if (!Array.isArray(students) || !students.length) {
-    return res.status(400).json({ error: "students 배열이 필요합니다" });
+  try {
+    const out = await assignClassBudgets(req.body, { litellm });
+    const n = out.results.length;
+    const fail = out.results.filter((r) => r.error).length;
+    console.log(`${req.adminEmail} 이(가) 일괄 발급: ${n}명 (실패 ${fail})`);
+    res.json(out);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
   }
-  const results = [];
-  for (const s of students) {
-    try {
-      const data = await litellm("/key/generate", "POST", {
-        key_alias: s.alias,
-        team_id: defaults.team_id || undefined,
-        ...keyParams(defaults),
-      });
-      results.push({ alias: s.alias, key: data.key });
-    } catch (e) {
-      results.push({ alias: s.alias, error: e.message });
-    }
-  }
-  console.log(`${req.adminEmail} 이(가) 일괄 발급: ${students.length}명`);
-  res.json({ results });
 });
 
 // ---- 사용량 분석 ----
@@ -320,7 +309,7 @@ app.post("/api/keys", requireAdmin, async (req, res) => {
     console.log(`${req.adminEmail} 이(가) 키 발급: ${req.body.alias}`);
     res.json(data);
   } catch (e) {
-    res.status(502).json({ error: e.message });
+    res.status(e.status || 502).json({ error: e.message });
   }
 });
 
