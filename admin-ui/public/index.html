@@ -145,22 +145,22 @@
           <div id="chart-students"></div>
         </div>
         <div class="chart-box" style="margin-top:0">
-          <h3>그룹별 지출</h3>
-          <p class="cap">기간 내 그룹 합산 사용액입니다.</p>
+          <h3>학급/조별 지출</h3>
+          <p class="cap">기간 내 학급/조 합산 사용액입니다.</p>
           <div id="chart-teams"></div>
         </div>
       </div>
     </div>
 
     <fieldset>
-      <legend>그룹 관리</legend>
+      <legend>학급/조 관리</legend>
       <p class="muted" style="margin:.2rem 0 .6rem; font-size:.82rem">
-        그룹 예산·제한은 소속 학생 키 전체의 <b>합산</b> 사용량에 적용됩니다. 개별 키 제한과 중첩 적용됩니다.</p>
+        학급/조 예산·제한은 소속 학생 키 전체의 <b>합산</b> 사용량에 적용됩니다. 개별 키 제한과 중첩 적용됩니다.</p>
       <form id="team-form" class="form-grid">
-        <label>그룹 이름 *
+        <label>학급/조 이름 *
           <input id="t-alias" placeholder="예: 3학년A반, 캡스톤1조" required>
         </label>
-        <label>그룹 예산 (USD)
+        <label>학급/조 예산 (USD)
           <input id="t-budget" type="number" step="1" min="0" placeholder="비우면 무제한">
         </label>
         <label>예산 리셋 주기
@@ -171,16 +171,16 @@
             <option value="30d">매월(30일)</option>
           </select>
         </label>
-        <label>그룹 RPM
+        <label>학급/조 RPM
           <input id="t-rpm" type="number" min="1" placeholder="무제한">
         </label>
-        <label>그룹 TPM
+        <label>학급/조 TPM
           <input id="t-tpm" type="number" min="1" placeholder="무제한">
         </label>
-        <label>&nbsp;<button class="primary" type="submit">그룹 생성</button></label>
+        <label>&nbsp;<button class="primary" type="submit">학급/조 생성</button></label>
       </form>
       <table>
-        <thead><tr><th>그룹</th><th>지출 / 예산</th><th>리셋 주기</th><th>RPM/TPM</th><th>키 수</th><th></th></tr></thead>
+        <thead><tr><th>학급/조</th><th>지출 / 예산</th><th>리셋 주기</th><th>RPM/TPM</th><th>키 수</th><th></th></tr></thead>
         <tbody id="team-rows"></tbody>
       </table>
     </fieldset>
@@ -188,19 +188,19 @@
     <fieldset>
       <legend>학급 일괄 예산 할당</legend>
       <p class="muted bulk-hint">
-        조/학급을 고르고 인당 예산·만료일을 정한 뒤, 명단 CSV 또는 <code>학번,이름</code> 붙여넣기로
+        학급/조를 고르고 인당 예산·만료일을 정한 뒤, 명단 CSV 또는 <code>학번,이름</code> 붙여넣기로
         전원에게 <b>같은 금액·같은 기간</b>의 가상 키를 부여합니다.
         헤더 <code>name,student_id</code> 와 <code>학번,이름</code> 모두 됩니다.
       </p>
       <form id="class-form">
         <div class="form-grid">
-          <label>조/학급
+          <label>학급/조
             <select id="bulk-team">
-              <option value="">그룹 없음</option>
-              <option value="__new__">+ 새 그룹 만들기</option>
+              <option value="">학급 없음</option>
+              <option value="__new__">+ 새 학급 만들기</option>
             </select>
           </label>
-          <label id="bulk-team-name-wrap" style="display:none">새 그룹 이름
+          <label id="bulk-team-name-wrap" style="display:none">새 학급 이름
             <input id="bulk-team-name" placeholder="예: 3학년A반, 캡스톤1조">
           </label>
           <label>인당 예산 (USD) *
@@ -250,8 +250,8 @@
           <label>키 별칭
             <input id="alias" placeholder="예: 20261001-홍길동">
           </label>
-          <label>소속 그룹
-            <select id="team-select"><option value="">그룹 없음</option></select>
+          <label>소속 학급/조
+            <select id="team-select"><option value="">학급 없음</option></select>
           </label>
           <label>예산 (USD)
             <input id="budget" type="number" step="0.5" min="0" value="2" placeholder="비우면 무제한">
@@ -283,7 +283,7 @@
             <input id="tpm" type="number" min="1" placeholder="비우면 무제한">
           </label>
         </div>
-        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(아무것도 안 고르면 전체/그룹 설정 따름)</span></div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(아무것도 안 고르면 전체/학급/조 설정 따름)</span></div>
         <div id="model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
         <p class="muted bulk-hint">여러 명은 위 <b>학급 일괄 예산 할당</b>에서 CSV 또는 명단으로 부여하세요.</p>
         <div style="margin-top:.9rem"><button class="primary" type="submit">발급</button></div>
@@ -293,7 +293,7 @@
 
     <div class="toolbar">
       <h2 style="margin:0">발급된 키</h2>
-      <select id="filter-team"><option value="">전체 그룹</option></select>
+      <select id="filter-team"><option value="">전체 학급</option></select>
       <select id="filter-expiry">
         <option value="">전체 상태</option>
         <option value="expired">만료됨</option>
@@ -304,7 +304,7 @@
       <span id="filter-count" class="muted"></span>
     </div>
     <p class="muted bulk-hint">
-      학기·캠프가 끝나면 조/학급 또는 <b>만료됨</b> 필터로 모은 뒤 일괄 차단하거나 회수(삭제)하세요.
+      학기·캠프가 끝나면 학급/조 또는 <b>만료됨</b> 필터로 모은 뒤 일괄 차단하거나 회수(삭제)하세요.
       차단은 나중에 해제할 수 있고, 회수는 LiteLLM에서 키를 지웁니다.
     </p>
     <div class="bulk-actions">
@@ -317,7 +317,7 @@
     <div id="revoke-result"></div>
     <table>
       <thead><tr>
-        <th></th><th>별칭</th><th>그룹</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
+        <th></th><th>별칭</th><th>학급/조</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
       </tr></thead>
       <tbody id="key-rows"></tbody>
     </table>
@@ -471,12 +471,12 @@
               <button class="small" data-ti="${i}" data-act="t-edit">수정</button>
               <button class="small" data-ti="${i}" data-act="t-del">삭제</button>
             </td>
-          </tr>`).join("") || '<tr><td colspan="6" class="muted">그룹 없음</td></tr>';
+          </tr>`).join("") || '<tr><td colspan="6" class="muted">학급 없음</td></tr>';
         for (const sel of [$("team-select"), $("filter-team"), $("bulk-team")]) {
           const cur = sel.value;
-          const empty = sel.id === "filter-team" ? "전체 그룹" : "그룹 없음";
+          const empty = sel.id === "filter-team" ? "전체 학급" : "학급 없음";
           const extra = sel.id === "bulk-team"
-            ? `<option value="__new__">+ 새 그룹 만들기</option>` : "";
+            ? `<option value="__new__">+ 새 학급 만들기</option>` : "";
           sel.innerHTML = `<option value="">${empty}</option>` + extra +
             teamCache.map((t) => `<option value="${t.team_id}">${t.team_alias || t.team_id.slice(0, 8)}</option>`).join("");
           sel.value = cur;
@@ -589,7 +589,7 @@
       ];
       if (teamBudget > 0) {
         cards.push({
-          k: "그룹 예산 소진 예상",
+          k: "학급/조 예산 소진 예상",
           v: exhaust === null ? "-" : exhaust === 0 ? "이미 초과" : `약 ${exhaust}일 후`,
           s: `예산 합계 ${money(teamBudget)} 중 ${money(a.totalSpend)} 사용`,
         });
@@ -611,7 +611,7 @@
           ? `최근 ${days}일의 누적 지출에 직선을 맞춰 ${horizon}일 뒤를 추정한 값입니다. 사용 패턴이 바뀌면 달라집니다.`
           : "예측하려면 최소 3일치 사용 기록이 필요합니다.")
           + (teamBudget && !cum.budgetShown
-            ? ` 그룹 예산 합계 ${money(teamBudget)}는 현재 지출보다 훨씬 커서 그래프에 표시하지 않았습니다.` : "");
+            ? ` 학급/조 예산 합계 ${money(teamBudget)}는 현재 지출보다 훨씬 커서 그래프에 표시하지 않았습니다.` : "");
         CHARTS.dailyBarChart($("chart-daily"), a.dates, a.daily);
         CHARTS.rankBarChart($("chart-students"), a.keyStats, { labelKey: "alias", subKey: "team" });
         CHARTS.rankBarChart($("chart-teams"), a.teamStats, { labelKey: "name" });
@@ -781,7 +781,7 @@
         + (fail.length ? ` · <span class="badge red">실패 ${fail.length}건</span>` : "")
         + (out.max_budget != null ? ` · 인당 $${esc(out.max_budget)}` : "")
         + (out.expires ? ` · 만료 ${esc(out.expires)}` : "")
-        + (out.team_created ? ` · 그룹 생성됨` : "")
+        + (out.team_created ? ` · 학급 생성됨` : "")
         + `</p>`;
       if (ok.length) {
         const csv = "alias,student_id,name,api_key\n" + ok.map((r) =>
@@ -827,7 +827,7 @@
         + (fail.length ? ` · <span class="badge red">실패 ${fail.length}건</span>` : "")
         + `</p>`;
       html += `<table><thead><tr>`
-        + `<th>상태</th><th>별칭</th><th>그룹</th><th>만료</th><th>결과</th>`
+        + `<th>상태</th><th>별칭</th><th>학급/조</th><th>만료</th><th>결과</th>`
         + `</tr></thead><tbody>`;
       for (const r of results) {
         const rowCls = r.error ? "result-fail-row" : "result-ok-row";
@@ -898,7 +898,7 @@
       if (teamSel === "__new__") {
         const name = $("bulk-team-name").value.trim();
         if (!name) {
-          $("error").textContent = "새 그룹 이름을 입력하세요";
+          $("error").textContent = "새 학급 이름을 입력하세요";
           return;
         }
         payload.team = name;
@@ -928,7 +928,7 @@
     function openEdit(kind, obj) {
       editKind = kind;
       editTarget = obj;
-      $("edit-kind").textContent = kind === "key" ? "키" : "그룹";
+      $("edit-kind").textContent = kind === "key" ? "키" : "학급/조";
       $("edit-alias").textContent = obj.key_alias || obj.team_alias || "";
       $("e-budget").value = obj.max_budget ?? "";
       $("e-budget-duration").value = obj.budget_duration || "";
@@ -974,7 +974,7 @@
           const t = teamCache[Number(ev.target.dataset.ti)];
           if (act === "t-edit") return openEdit("team", t);
           if (act === "t-del") {
-            if (!confirm(`'${t.team_alias}' 그룹을 삭제할까요? 소속 키도 함께 삭제됩니다.`)) return;
+            if (!confirm(`'${t.team_alias}' 학급/조를 삭제할까요? 소속 키도 함께 삭제됩니다.`)) return;
             await api("/api/teams/delete", { method: "POST", body: JSON.stringify({ team_id: t.team_id }) });
           }
         } else {
