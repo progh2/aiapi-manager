@@ -6,6 +6,7 @@ const admin = require("firebase-admin");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
 const { adjustKey, keyDetail } = require("./lib/key-adjust");
+const { resolveIssueModels, teamModelsFor } = require("./lib/model-allowlist");
 
 const {
   FIREBASE_PROJECT_ID,
@@ -320,10 +321,17 @@ app.get("/api/keys", requireAdmin, async (req, res) => {
 app.post("/api/keys", requireAdmin, async (req, res) => {
   if (!req.body.alias) return res.status(400).json({ error: "alias가 필요합니다" });
   try {
+    const params = keyParams(req.body);
+    const models = resolveIssueModels(
+      req.body.models,
+      await teamModelsFor(litellm, req.body.team_id)
+    );
+    if (models.length) params.models = models;
+    else delete params.models;
     const data = await litellm("/key/generate", "POST", {
       key_alias: req.body.alias,
       team_id: req.body.team_id || undefined,
-      ...keyParams(req.body),
+      ...params,
     });
     console.log(`${req.adminEmail} 이(가) 키 발급: ${req.body.alias}`);
     res.json(data);

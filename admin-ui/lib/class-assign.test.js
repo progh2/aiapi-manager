@@ -23,6 +23,11 @@ function mockLiteLLM({ generate, teams = [], createdTeamId = "team-new" } = {}) 
 }
 
 describe("keyGenerateParams", () => {
+  it("models 배열을 정규화해 넣는다", () => {
+    const p = keyGenerateParams({ models: [" gpt-4o-mini ", "gpt-4o-mini"] });
+    assert.deepEqual(p.models, ["gpt-4o-mini"]);
+  });
+
   it("expires 가 있으면 duration 으로 바꾼다", () => {
     const now = new Date(2026, 8, 15, 12, 0, 0);
     const p = keyGenerateParams({
@@ -118,6 +123,61 @@ describe("assignClassBudgets", () => {
     await assert.rejects(
       () => assignClassBudgets({ students: [] }, { litellm }),
       (e) => e.status === 400
+    );
+  });
+
+  it("models 를 키 발급에 그대로 넣는다", async () => {
+    const { litellm, calls } = mockLiteLLM();
+    const out = await assignClassBudgets({
+      students: [{ alias: "20261001-홍길동" }],
+      team_id: "team-a",
+      budget: 2,
+      models: ["gpt-4o-mini"],
+    }, { litellm });
+    assert.deepEqual(out.models, ["gpt-4o-mini"]);
+    const gen = calls.find((c) => c.path === "/key/generate");
+    assert.deepEqual(gen.body.models, ["gpt-4o-mini"]);
+  });
+
+  it("발급 때 모델을 안 고르면 학급 허용 목록을 물려받는다", async () => {
+    const { litellm, calls } = mockLiteLLM({
+      teams: [{ team_id: "team-a", team_alias: "3학년A반", models: ["gpt-4o-mini"] }],
+    });
+    const out = await assignClassBudgets({
+      students: [{ alias: "20261001-홍길동" }],
+      team_id: "team-a",
+      budget: 2,
+    }, { litellm });
+    assert.deepEqual(out.models, ["gpt-4o-mini"]);
+    const gen = calls.find((c) => c.path === "/key/generate");
+    assert.deepEqual(gen.body.models, ["gpt-4o-mini"]);
+  });
+
+  it("새 학급을 만들 때 허용 목록을 학급에도 넣는다", async () => {
+    const { litellm, calls } = mockLiteLLM({ createdTeamId: "team-created" });
+    await assignClassBudgets({
+      students: [{ alias: "20261001-홍길동" }],
+      team: "3학년A반",
+      budget: 2,
+      models: ["gpt-4o-mini"],
+    }, { litellm });
+    const created = calls.find((c) => c.path === "/team/new");
+    assert.deepEqual(created.body.models, ["gpt-4o-mini"]);
+    const gen = calls.find((c) => c.path === "/key/generate");
+    assert.deepEqual(gen.body.models, ["gpt-4o-mini"]);
+  });
+
+  it("학급 목록 밖 모델만 고르면 400", async () => {
+    const { litellm } = mockLiteLLM({
+      teams: [{ team_id: "team-a", models: ["gpt-4o-mini"] }],
+    });
+    await assert.rejects(
+      () => assignClassBudgets({
+        students: [{ alias: "20261001-홍길동" }],
+        team_id: "team-a",
+        models: ["gpt-4o"],
+      }, { litellm }),
+      (e) => e.status === 400 && /겹치지/.test(e.message)
     );
   });
 });

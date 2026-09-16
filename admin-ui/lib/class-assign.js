@@ -4,6 +4,11 @@ const {
   normalizeStudentList,
   durationFromExpiryDate,
 } = require("./roster");
+const {
+  normalizeModels,
+  resolveIssueModels,
+  teamModelsFor,
+} = require("./model-allowlist");
 
 const MAX_BULK = 500;
 
@@ -16,24 +21,36 @@ function keyGenerateParams(body) {
   } else if (body.duration) {
     p.duration = body.duration;
   }
-  if (Array.isArray(body.models)) p.models = body.models;
+  if (Array.isArray(body.models)) p.models = normalizeModels(body.models);
   if (body.rpm_limit) p.rpm_limit = Number(body.rpm_limit);
   if (body.tpm_limit) p.tpm_limit = Number(body.tpm_limit);
   if (body.max_parallel_requests) p.max_parallel_requests = Number(body.max_parallel_requests);
   return p;
 }
 
-async function resolveTeam(litellm, team, teamBudget) {
+async function resolveTeam(litellm, team, teamBudget, extra = {}) {
   const listing = await litellm("/team/list", "GET");
   const teams = Array.isArray(listing) ? listing : listing.teams || [];
   const found = teams.find((t) => t.team_alias === team || t.team_id === team);
   if (found) {
-    return { team_id: found.team_id, created: false, team_alias: found.team_alias || team };
+    return {
+      team_id: found.team_id,
+      created: false,
+      team_alias: found.team_alias || team,
+      models: normalizeModels(found.models),
+    };
   }
   const payload = { team_alias: team };
   if (teamBudget !== undefined && teamBudget !== "") payload.max_budget = Number(teamBudget);
+  const models = normalizeModels(extra.models);
+  if (models.length) payload.models = models;
   const created = await litellm("/team/new", "POST", payload);
-  return { team_id: created.team_id, created: true, team_alias: team };
+  return {
+    team_id: created.team_id,
+    created: true,
+    team_alias: team,
+    models: payload.models || [],
+  };
 }
 
 function parseBodyRoster(body) {
@@ -69,12 +86,27 @@ async function assignClassBudgets(body, { litellm }) {
   let teamId = body.team_id || "";
   let teamCreated = false;
   let teamAlias = null;
+  let teamModels = [];
   const teamName = String(body.team || "").trim();
   if (!teamId && teamName) {
-    const resolved = await resolveTeam(litellm, teamName, body.team_budget);
+    const resolved = await resolveTeam(litellm, teamName, body.team_budget, {
+      models: body.models,
+    });
     teamId = resolved.team_id;
     teamCreated = resolved.created;
     teamAlias = resolved.team_alias;
+    teamModels = resolved.models || [];
+  } else if (teamId) {
+    teamModels = await teamModelsFor(litellm, teamId);
+  }
+
+  try {
+    const models = resolveIssueModels(params.models || body.models, teamModels);
+    if (models.length) params.models = models;
+    else delete params.models;
+  } catch (e) {
+    if (!e.status) e.status = 400;
+    throw e;
   }
 
   const results = [];
@@ -121,6 +153,7 @@ async function assignClassBudgets(body, { litellm }) {
     duration: params.duration || null,
     expires: body.expires || null,
     max_budget: params.max_budget ?? null,
+    models: params.models || [],
   };
 }
 

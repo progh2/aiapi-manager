@@ -116,7 +116,7 @@ def load_students(path: str) -> list[dict]:
 
 
 def resolve_team(base_url: str, master_key: str, team: str,
-                 team_budget: float | None) -> str:
+                 team_budget: float | None, models: list | None = None) -> str:
     """그룹 이름을 team_id로 바꾼다. 이미 team_id면 그대로, 없는 이름이면 생성."""
     listing = api(base_url, master_key, "/team/list")
     teams = listing if isinstance(listing, list) else listing.get("teams", [])
@@ -124,8 +124,10 @@ def resolve_team(base_url: str, master_key: str, team: str,
         if team in (t.get("team_alias"), t.get("team_id")):
             print(f"기존 그룹 사용: {t.get('team_alias')} ({t['team_id'][:8]}…)")
             return t["team_id"]
-    created = api(base_url, master_key, "/team/new",
-                  {"team_alias": team, "max_budget": team_budget})
+    payload = {"team_alias": team, "max_budget": team_budget}
+    if models:
+        payload["models"] = models
+    created = api(base_url, master_key, "/team/new", payload)
     print(f"그룹 생성: {team} ({created['team_id'][:8]}…)"
           + (f", 그룹 예산 ${team_budget}" if team_budget else ""))
     return created["team_id"]
@@ -171,7 +173,7 @@ def main() -> None:
     if args.team:
         try:
             team_id = resolve_team(args.base_url, args.master_key,
-                                   args.team, args.team_budget)
+                                   args.team, args.team_budget, args.models)
         except Exception as e:
             sys.exit(f"그룹 준비 실패: {e}")
 
