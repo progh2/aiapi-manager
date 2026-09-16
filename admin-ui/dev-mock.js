@@ -5,6 +5,7 @@ const path = require("path");
 const express = require("express");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
+const { adjustKey, keyDetail } = require("./lib/key-adjust");
 
 const PORT = Number(process.env.PORT || 3456);
 const app = express();
@@ -63,6 +64,15 @@ function seedDemo() {
     max_budget: 2,
     spend: 1.2,
     expires: new Date(Date.now() - 3 * 86400000).toISOString(),
+    metadata: {
+      aiapi_history: [{
+        at: new Date(Date.now() - 20 * 86400000).toISOString(),
+        by: "teacher@school.kr",
+        add_budget: 1,
+        max_budget_before: 1,
+        max_budget_after: 2,
+      }],
+    },
   });
   add({
     token: "sk-mock-20261002-김철수",
@@ -163,10 +173,31 @@ async function litellm(p, method = "GET", body) {
     return rec;
   }
   if (p.startsWith("/key/list")) return { keys, total_pages: 1 };
+  if (p.startsWith("/key/info")) {
+    const q = new URL("http://x" + p);
+    const tok = q.searchParams.get("key");
+    const k = keys.find((x) => x.token === tok);
+    if (!k) throw new Error("키 없음");
+    return { key: k.token, info: k };
+  }
   if (p === "/key/update") {
     const k = keys.find((x) => x.token === body.key);
-    if (k) Object.assign(k, body);
-    return k || body;
+    if (!k) throw new Error("키 없음");
+    if (body.max_budget !== undefined) k.max_budget = body.max_budget;
+    if (body.budget !== undefined && body.budget !== "") k.max_budget = Number(body.budget);
+    if (body.metadata) k.metadata = body.metadata;
+    if (body.budget_duration !== undefined) k.budget_duration = body.budget_duration;
+    if (body.rpm_limit !== undefined) k.rpm_limit = body.rpm_limit;
+    if (body.tpm_limit !== undefined) k.tpm_limit = body.tpm_limit;
+    if (body.models) k.models = body.models;
+    if (body.duration) {
+      if (/^\d+s$/.test(body.duration)) {
+        k.expires = new Date(Date.now() + Number(body.duration.slice(0, -1)) * 1000).toISOString();
+      } else if (/^\d+d$/.test(body.duration)) {
+        k.expires = new Date(Date.now() + Number(body.duration.slice(0, -1)) * 86400000).toISOString();
+      }
+    }
+    return k;
   }
   if (p === "/key/block" || p === "/key/unblock") {
     const k = keys.find((x) => x.token === body.key);
@@ -228,6 +259,20 @@ app.post("/api/keys/bulk", async (req, res) => {
     res.status(e.status || 502).json({ error: e.message });
   }
 });
+app.get("/api/keys/info", async (req, res) => {
+  try {
+    res.json(await keyDetail(req.query.token, { litellm }));
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+app.post("/api/keys/adjust", async (req, res) => {
+  try {
+    res.json(await adjustKey(req.body, { litellm, actor: "teacher@school.kr" }));
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
 app.post("/api/keys/update", (req, res) => {
   litellm("/key/update", "POST", { key: req.body.token, ...req.body })
     .then((d) => res.json(d))
@@ -267,5 +312,5 @@ app.get("/api/analytics", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄 예산·만료 회수 데모)`);
+  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄 예산·만료 회수·개별 충전 데모)`);
 });

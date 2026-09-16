@@ -5,6 +5,7 @@ const express = require("express");
 const admin = require("firebase-admin");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
+const { adjustKey, keyDetail } = require("./lib/key-adjust");
 
 const {
   FIREBASE_PROJECT_ID,
@@ -326,6 +327,31 @@ app.post("/api/keys", requireAdmin, async (req, res) => {
     });
     console.log(`${req.adminEmail} 이(가) 키 발급: ${req.body.alias}`);
     res.json(data);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+// 키 상세 (현재 값 + 충전·연장 이력). LiteLLM /key/info, 없으면 /key/list.
+app.get("/api/keys/info", requireAdmin, async (req, res) => {
+  try {
+    res.json(await keyDetail(req.query.token, { litellm }));
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+// 개별 충전·기간 연장. 예산은 가산, 만료는 기존일 +N 또는 달력일.
+// 이력(누가·언제·얼마/만료)은 LiteLLM metadata.aiapi_history.
+app.post("/api/keys/adjust", requireAdmin, async (req, res) => {
+  try {
+    const out = await adjustKey(req.body, { litellm, actor: req.adminEmail });
+    const bits = [];
+    if (out.add_budget != null) bits.push(`+$${out.add_budget}`);
+    if (out.add_days != null) bits.push(`+${out.add_days}일`);
+    if (out.entry?.expires && out.add_days == null) bits.push(`만료 ${out.entry.expires}`);
+    console.log(`${req.adminEmail} 이(가) 키 충전·연장: ${out.alias || out.token.slice(0, 12)} ${bits.join(" ")}`);
+    res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
   }
