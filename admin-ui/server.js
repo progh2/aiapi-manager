@@ -144,6 +144,14 @@ app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
 const DAY_MS = 86400000;
 const ymd = (d) => d.toISOString().slice(0, 10);
 
+// 잔여 예산. max_budget이 없으면 숫자를 만들지 않고 null.
+function remainingBudget(maxBudget, spend) {
+  if (maxBudget == null) return null;
+  const budget = Number(maxBudget);
+  if (!Number.isFinite(budget)) return null;
+  return budget - (Number(spend) || 0);
+}
+
 // 최소제곱 직선회귀로 향후 지출을 예측한다.
 // 반환: 하루 평균 증가액(slope)과 n일 뒤 누적 예측값.
 function forecast(dailySeries, horizonDays) {
@@ -238,13 +246,19 @@ app.get("/api/analytics", requireAdmin, async (req, res) => {
 
     // 지출이 0인 항목은 그래프를 어지럽히기만 하므로 제외한다
     // (삭제된 키의 잔여 기록, 호출만 실패한 키 등)
-    const keyStats = [...perKey.entries()].map(([hash, v]) => ({
-      alias: meta.get(hash)?.alias || hash.slice(0, 8),
-      team: meta.get(hash)?.team || null,
-      budget: meta.get(hash)?.budget ?? null,
-      deleted: !meta.has(hash),
-      ...v,
-    })).filter((k) => k.spend > 0).sort((a, b) => b.spend - a.spend);
+    const keyStats = [...perKey.entries()].map(([hash, v]) => {
+      const m = meta.get(hash);
+      const budget = m?.budget ?? null;
+      return {
+        alias: m?.alias || hash.slice(0, 8),
+        team: m?.team || null,
+        budget,
+        max_budget: budget,
+        remaining: remainingBudget(budget, v.spend),
+        deleted: !m,
+        ...v,
+      };
+    }).filter((k) => k.spend > 0).sort((a, b) => b.spend - a.spend);
 
     // 그룹별 합계
     const perTeam = new Map();
