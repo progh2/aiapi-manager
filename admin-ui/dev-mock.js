@@ -257,12 +257,47 @@ app.get("/api/analytics", (_req, res) => {
   const now = Date.now();
   for (let i = 13; i >= 0; i--) {
     dates.push(new Date(now - i * 86400000).toISOString().slice(0, 10));
-    daily.push(0);
+    daily.push(Number((0.15 + (13 - i) * 0.04).toFixed(3)));
   }
+  const cumulative = [];
+  daily.reduce((sum, v, i) => { cumulative[i] = Number((sum + v).toFixed(3)); return cumulative[i]; }, 0);
+  const teamName = (id) => teams.find((t) => t.team_id === id)?.team_alias || null;
+  const keyStats = keys
+    .filter((k) => k.spend > 0)
+    .map((k) => ({
+      alias: k.key_alias,
+      team: teamName(k.team_id),
+      spend: k.spend,
+      budget: k.max_budget ?? null,
+      max_budget: k.max_budget ?? null,
+      remaining: k.max_budget == null ? null : Number((k.max_budget - k.spend).toFixed(3)),
+      requests: Math.max(1, Math.round(k.spend * 40)),
+    }))
+    .sort((a, b) => b.spend - a.spend);
+  // 차트 폴백·초과 문구 확인용: 무제한 키와 예산 초과 키
+  if (!keyStats.some((k) => k.remaining == null)) {
+    keyStats.push({
+      alias: "교사-실습", team: null, spend: 0.55, budget: null,
+      max_budget: null, remaining: null, requests: 12,
+    });
+  }
+  const over = keyStats.find((k) => k.alias === "20261002-김철수");
+  if (over && over.remaining >= 0) {
+    over.spend = 2.4;
+    over.remaining = -0.4;
+    over.requests = 96;
+  }
+  const perTeam = new Map();
+  for (const k of keyStats) {
+    const name = k.team || "(그룹 없음)";
+    perTeam.set(name, Number(((perTeam.get(name) || 0) + k.spend).toFixed(3)));
+  }
+  const teamStats = [...perTeam.entries()].map(([name, spend]) => ({ name, spend }));
   res.json({
-    dates, daily, requests: daily.slice(), cumulative: daily.slice(),
-    futureDates: [], forecast: null, keyStats: [], teamStats: [], modelStats: [],
-    totalSpend: 0,
+    dates, daily, requests: daily.slice(), cumulative,
+    futureDates: [], forecast: null, keyStats, teamStats,
+    modelStats: [{ model: "gpt-4o-mini", spend: cumulative.at(-1) || 0 }],
+    totalSpend: cumulative.at(-1) || 0,
   });
 });
 

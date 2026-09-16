@@ -1,13 +1,14 @@
 // 사용량 대시보드 차트. 외부 차트 라이브러리 없이 인라인 SVG로 그린다.
 // 색은 역할별 CSS 변수(--series-1 등)를 쓰고, 라이트/다크 값은 style에서 전환된다.
 
+import { money, hasRemaining, remainingTipLine, rankValueText } from "./remaining-label.js";
+
 const NS = "http://www.w3.org/2000/svg";
 const el = (name, attrs = {}) => {
   const n = document.createElementNS(NS, name);
   for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
   return n;
 };
-const money = (v) => "$" + (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(2) : v.toFixed(3));
 const shortDate = (iso) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
 
 // 공용 툴팁 (차트마다 만들지 않고 하나를 재사용)
@@ -182,8 +183,12 @@ export function rankBarChart(node, items, { valueKey = "spend", labelKey = "alia
   node.innerHTML = "";
   const data = items.slice(0, limit);
   if (!data.length) { node.innerHTML = '<p class="muted">기간 내 사용 기록 없음</p>'; return; }
-  const rowH = 30, labelW = 150, valW = 128;
-  const w = node.clientWidth || 720, h = data.length * rowH + 8;
+  const w = node.clientWidth || 720;
+  const rowH = 30, labelW = 150;
+  // 잔여를 같이 쓰면 오른쪽 숫자 칸이 길어진다. 좁은 화면은 잔여만 두고 지출/예산은 툴팁에.
+  const compact = w < 560;
+  const valW = compact ? 118 : 196;
+  const h = data.length * rowH + 8;
   const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, width: "100%", height: h, role: "img" });
   const plotW = w - labelW - valW;
   const max = Math.max(...data.map((d) => Math.max(d[valueKey], d.budget || 0)), 0.0001);
@@ -198,7 +203,7 @@ export function rankBarChart(node, items, { valueKey = "spend", labelKey = "alia
       sub.textContent = d[subKey];
       svg.appendChild(sub);
     }
-    // 예산 트랙
+    // 예산 트랙 — remaining이 있어도 트랙/초과 판정은 기존 budget을 쓴다
     if (d.budget) {
       svg.appendChild(el("rect", { x: labelW, y: yTop, width: (plotW * d.budget) / max, height: bh, rx: 4, fill: "var(--track)" }));
     }
@@ -208,15 +213,16 @@ export function rankBarChart(node, items, { valueKey = "spend", labelKey = "alia
       x: labelW, y: yTop, width: bw, height: bh, rx: 4,
       fill: over ? "var(--status-critical)" : "var(--series-1)",
     }));
+    const spendTxt = money(d[valueKey]);
     const val = el("text", { x: labelW + plotW + 8, y: yTop + 11, class: "lbl" });
-    // 예산 초과는 색만으로 알리지 않고 글자로도 표시한다
-    val.textContent = money(d[valueKey]) + (d.budget ? ` / ${money(d.budget)}` : "") + (over ? " 초과" : "");
+    val.textContent = rankValueText(d, { valueKey, compact });
     svg.appendChild(val);
 
     const hit = el("rect", { x: 0, y: i * rowH, width: w, height: rowH, fill: "transparent" });
     hit.addEventListener("mousemove", (ev) => showTip(
-      `<b>${d[labelKey]}</b>${d.team ? ` · ${d.team}` : ""}<br>지출 ${money(d[valueKey])}` +
+      `<b>${d[labelKey]}</b>${d.team ? ` · ${d.team}` : ""}<br>지출 ${spendTxt}` +
       (d.budget ? `<br>예산 ${money(d.budget)} (${((d[valueKey] / d.budget) * 100).toFixed(0)}%)` : "") +
+      (hasRemaining(d) ? `<br>${remainingTipLine(d.remaining)}` : "") +
       (d.requests != null ? `<br>요청 ${d.requests.toLocaleString()}회` : ""), ev.clientX, ev.clientY));
     hit.addEventListener("mouseleave", hideTip);
     svg.appendChild(hit);
