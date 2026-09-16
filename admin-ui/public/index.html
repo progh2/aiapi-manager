@@ -294,10 +294,30 @@
     <div class="toolbar">
       <h2 style="margin:0">발급된 키</h2>
       <select id="filter-team"><option value="">전체 그룹</option></select>
+      <select id="filter-expiry">
+        <option value="">전체 상태</option>
+        <option value="expired">만료됨</option>
+        <option value="expiring">만료 임박 (7일)</option>
+        <option value="blocked">차단됨</option>
+        <option value="active">사용 중</option>
+      </select>
+      <span id="filter-count" class="muted"></span>
     </div>
+    <p class="muted bulk-hint">
+      학기·캠프가 끝나면 조/학급 또는 <b>만료됨</b> 필터로 모은 뒤 일괄 차단하거나 회수(삭제)하세요.
+      차단은 나중에 해제할 수 있고, 회수는 LiteLLM에서 키를 지웁니다.
+    </p>
+    <div class="bulk-actions">
+      <label style="display:flex;align-items:center;gap:.35rem;font-size:.85rem">
+        <input type="checkbox" id="revoke-select-all"> 필터된 키 모두 선택
+      </label>
+      <button type="button" class="primary" id="revoke-block">선택한 키 일괄 차단</button>
+      <button type="button" id="revoke-delete">선택한 키 일괄 회수(삭제)</button>
+    </div>
+    <div id="revoke-result"></div>
     <table>
       <thead><tr>
-        <th>별칭</th><th>그룹</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
+        <th></th><th>별칭</th><th>그룹</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
       </tr></thead>
       <tbody id="key-rows"></tbody>
     </table>
@@ -350,6 +370,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="roster.js"></script>
+  <script src="key-revoke.js"></script>
   <script type="module">
     import { dailyBarChart, cumulativeChart, rankBarChart } from "./charts.js";
     window.CHARTS = { dailyBarChart, cumulativeChart, rankBarChart };
@@ -378,6 +399,9 @@
       signInWithPopup() { return Promise.resolve(); },
     } : firebase.auth();
     const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
     let availableModels = [];
     let keyCache = [];
     let teamCache = [];
@@ -422,7 +446,11 @@
     function expiryCell(k) {
       if (!k.expires) return '<span class="muted">무기한</span>';
       const d = new Date(k.expires);
-      return d.toLocaleDateString("ko-KR") + (d < new Date() ? ' <span class="badge red">만료</span>' : "");
+      if (d < new Date()) return d.toLocaleDateString("ko-KR") + ' <span class="badge red">만료</span>';
+      const soon = window.KeyRevoke
+        ? KeyRevoke.isExpiringSoon(k, 7)
+        : (d.getTime() - Date.now() <= 7 * 86400000);
+      return d.toLocaleDateString("ko-KR") + (soon ? ' <span class="badge yellow">임박</span>' : "");
     }
 
     const DUR_LABEL = { "1d": "매일", "7d": "매주", "30d": "매월" };
@@ -457,6 +485,32 @@
       } catch (e) { $("error").textContent = e.message; }
     }
 
+    const selectedTokens = new Set();
+
+    function visibleKeys() {
+      const team = $("filter-team").value;
+      const expiry = $("filter-expiry").value;
+      return keyCache.filter((k) => {
+        if (team && k.team_id !== team) return false;
+        if (!expiry) return true;
+        if (window.KeyRevoke) return KeyRevoke.matchesFilter(k, expiry, { within_days: 7 });
+        return true;
+      });
+    }
+
+    function syncSelectAll() {
+      const vis = visibleKeys();
+      const box = $("revoke-select-all");
+      if (!vis.length) {
+        box.checked = false;
+        box.indeterminate = false;
+        return;
+      }
+      const n = vis.filter((k) => selectedTokens.has(k.token)).length;
+      box.checked = n === vis.length;
+      box.indeterminate = n > 0 && n < vis.length;
+    }
+
     async function refreshKeys() {
       $("error").textContent = "";
       try {
@@ -468,28 +522,50 @@
     }
 
     function renderKeys() {
-      const filter = $("filter-team").value;
-      const rows = keyCache
-        .map((k, i) => ({ k, i }))
-        .filter(({ k }) => !filter || k.team_id === filter)
-        .map(({ k, i }) => `
+      const rows = visibleKeys().map((k) => {
+        const i = keyCache.indexOf(k);
+        const tok = esc(k.token || "");
+        const checked = selectedTokens.has(k.token) ? "checked" : "";
+        return `
           <tr class="${k.blocked ? "blocked" : ""}">
-            <td>${k.key_alias || "(없음)"}${k.blocked ? ' <span class="badge red">차단됨</span>' : ""}</td>
-            <td>${k.team_id ? `<span class="badge blue">${teamAlias(k.team_id)}</span>` : '<span class="muted">-</span>'}</td>
+            <td><input type="checkbox" class="revoke-cb" data-token="${tok}" ${checked}></td>
+            <td>${esc(k.key_alias || "(없음)")}${k.blocked ? ' <span class="badge red">차단됨</span>' : ""}</td>
+            <td>${k.team_id ? `<span class="badge blue">${esc(teamAlias(k.team_id))}</span>` : '<span class="muted">-</span>'}</td>
             <td>${gauge(k.spend, k.max_budget)}</td>
             <td>${DUR_LABEL[k.budget_duration] || '<span class="muted">없음</span>'}</td>
             <td>${expiryCell(k)}</td>
-            <td>${(k.models || []).join(", ") || '<span class="muted">전체</span>'}</td>
+            <td>${(k.models || []).map(esc).join(", ") || '<span class="muted">전체</span>'}</td>
             <td>${k.rpm_limit ?? "-"} / ${k.tpm_limit ?? "-"}</td>
             <td style="white-space:nowrap">
               <button class="small" data-i="${i}" data-act="edit">수정</button>
               <button class="small" data-i="${i}" data-act="block">${k.blocked ? "해제" : "차단"}</button>
               <button class="small" data-i="${i}" data-act="del">삭제</button>
             </td>
-          </tr>`);
-      $("key-rows").innerHTML = rows.join("") || '<tr><td colspan="8" class="muted">발급된 키 없음</td></tr>';
+          </tr>`;
+      });
+      const vis = visibleKeys();
+      $("key-rows").innerHTML = rows.join("")
+        || '<tr><td colspan="9" class="muted">필터에 맞는 키 없음</td></tr>';
+      $("filter-count").textContent = vis.length
+        ? `${vis.length}개` + (vis.length !== keyCache.length ? ` / 전체 ${keyCache.length}개` : "")
+        : "";
+      syncSelectAll();
     }
     $("filter-team").onchange = renderKeys;
+    $("filter-expiry").onchange = renderKeys;
+    $("revoke-select-all").onchange = () => {
+      const vis = visibleKeys();
+      if ($("revoke-select-all").checked) vis.forEach((k) => selectedTokens.add(k.token));
+      else vis.forEach((k) => selectedTokens.delete(k.token));
+      renderKeys();
+    };
+    document.addEventListener("change", (ev) => {
+      if (!ev.target.classList.contains("revoke-cb")) return;
+      const tok = ev.target.dataset.token;
+      if (ev.target.checked) selectedTokens.add(tok);
+      else selectedTokens.delete(tok);
+      syncSelectAll();
+    });
 
     // ---- 사용량 대시보드 ----
     const money = (v) => "$" + (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(2) : v.toFixed(3));
@@ -638,10 +714,6 @@
     };
 
     // ---- 학급 일괄 예산 할당 ----
-    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-    }[c]));
-
     function toggleBulkTeamName() {
       $("bulk-team-name-wrap").style.display = $("bulk-team").value === "__new__" ? "" : "none";
     }
@@ -743,6 +815,69 @@
       html += `</tbody></table>`;
       box.innerHTML = html;
     }
+
+    function renderRevokeResults(out) {
+      const results = out.results || [];
+      const ok = results.filter((r) => !r.error);
+      const fail = results.filter((r) => r.error);
+      const box = $("revoke-result");
+      const verb = out.action === "delete" ? "회수" : "차단";
+      let html = `<p style="margin:.8rem 0 .4rem"><b>일괄 ${verb} 결과</b> — `
+        + `<span class="result-ok">성공 ${ok.length}개</span>`
+        + (fail.length ? ` · <span class="badge red">실패 ${fail.length}건</span>` : "")
+        + `</p>`;
+      html += `<table><thead><tr>`
+        + `<th>상태</th><th>별칭</th><th>그룹</th><th>만료</th><th>결과</th>`
+        + `</tr></thead><tbody>`;
+      for (const r of results) {
+        const rowCls = r.error ? "result-fail-row" : "result-ok-row";
+        const status = r.error
+          ? '<span class="badge red">실패</span>'
+          : '<span class="badge" style="background:#e6f4ea;color:#137333">성공</span>';
+        let detail;
+        if (r.error) detail = `<span class="result-fail">${esc(r.error)}</span>`;
+        else if (r.deleted) detail = "회수(삭제)됨 — LiteLLM에서 키를 지웠습니다";
+        else if (r.skipped) detail = "이미 차단됨 — LiteLLM 상태와 같음";
+        else detail = "차단됨 — 호출할 수 없습니다";
+        const expiry = r.expires ? new Date(r.expires).toLocaleString("ko-KR") : "무기한";
+        html += `<tr class="${rowCls}"><td>${status}</td>`
+          + `<td><code>${esc(r.alias || r.token || "")}</code></td>`
+          + `<td>${esc(r.team_id ? teamAlias(r.team_id) : "-")}</td>`
+          + `<td>${esc(expiry)}</td>`
+          + `<td>${detail}</td></tr>`;
+      }
+      html += `</tbody></table>`;
+      box.innerHTML = html;
+    }
+
+    async function bulkRevoke(action) {
+      $("error").textContent = "";
+      const tokens = [...selectedTokens];
+      if (!tokens.length) {
+        $("error").textContent = "회수할 키를 선택하세요. 만료 필터 후 ‘필터된 키 모두 선택’을 쓸 수 있습니다.";
+        return;
+      }
+      const aliases = tokens.map((t) => keyCache.find((k) => k.token === t)?.key_alias || t.slice(0, 16));
+      const preview = aliases.slice(0, 8).join(", ") + (aliases.length > 8 ? ` 외 ${aliases.length - 8}개` : "");
+      const msg = action === "block"
+        ? `선택한 ${tokens.length}개 키를 차단할까요?\n${preview}\n\n학생은 더 이상 호출할 수 없습니다. 나중에 해제할 수 있습니다.`
+        : `선택한 ${tokens.length}개 키를 회수(삭제)할까요?\n${preview}\n\n되돌릴 수 없습니다.`;
+      if (!confirm(msg)) return;
+      const btn = action === "block" ? $("revoke-block") : $("revoke-delete");
+      btn.disabled = true;
+      try {
+        const out = await api("/api/keys/revoke", {
+          method: "POST",
+          body: JSON.stringify({ action, tokens }),
+        });
+        renderRevokeResults(out);
+        out.results.forEach((r) => { if (!r.error && r.token) selectedTokens.delete(r.token); });
+        await refreshKeys();
+      } catch (e) { $("error").textContent = e.message; }
+      finally { btn.disabled = false; }
+    }
+    $("revoke-block").onclick = () => bulkRevoke("block");
+    $("revoke-delete").onclick = () => bulkRevoke("delete");
 
     $("class-form").onsubmit = async (ev) => {
       ev.preventDefault();
