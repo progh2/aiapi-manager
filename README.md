@@ -174,6 +174,15 @@ P0 [#2](https://github.com/progh2/aiapi-manager/issues/2)·[#3](https://github.c
 - 결과는 행마다 성공/실패. 이미 차단된 키는 차단 시 성공(이미 차단됨)으로 남긴다
 - 확인 대화상자 후에만 실행된다. 관리 API는 계속 Firebase ID 토큰 + `ADMIN_EMAILS`
 
+### 개별 학생 예산 충전·기간 연장
+
+키 목록의 **상세**에서 한 학생만 금액을 더하거나 만료를 늘린다. 일반 **수정**은 한도를 통째로 바꾸고, 연장은 지금부터 N일이다.
+
+- **예산 충전** — 현재 `max_budget`에 가산한다 (예: $2 → $4). 무제한 키는 수정에서 한도를 먼저 정한다
+- **기간 연장** — 기존 만료일이 미래면 그 날짜에 일수를 더하고, 지났거나 없으면 지금부터 더한다. 달력 만료일도 된다
+- **이력** — 누가·언제·얼마(또는 새 만료)가 키 상세에 남는다. LiteLLM `/key/update`의 `metadata.aiapi_history`에 저장된다
+- 관리 API `GET /api/keys/info`, `POST /api/keys/adjust` 는 Firebase ID 토큰 + `ADMIN_EMAILS`
+
 ## 학생 키 일괄 발급 (CLI)
 
 ```sh

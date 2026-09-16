@@ -37,8 +37,14 @@
     .badge.blue { background: #e8f0fe; color: #1a73e8; }
     tr.blocked td { opacity: .5; }
     dialog { border: 1px solid #ccc; border-radius: 10px; padding: 1.2rem; min-width: 440px; }
+    dialog#detail-dlg { min-width: 560px; max-width: 720px; width: min(720px, 96vw); }
     dialog::backdrop { background: rgba(0,0,0,.25); }
     .dlg-actions { margin-top: 1rem; display: flex; gap: .5rem; justify-content: flex-end; }
+    .detail-now { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .55rem .8rem; margin: .2rem 0 .8rem; font-size: .85rem; }
+    .detail-now .k { color: #777; font-size: .75rem; }
+    .detail-now .v { margin-top: .1rem; }
+    #detail-preview { margin: .55rem 0 0; font-size: .82rem; }
+    #detail-history { margin-top: .4rem; max-height: 220px; overflow: auto; }
     .toolbar { display: flex; gap: .6rem; align-items: center; margin-top: 1.2rem; }
 
     /* ---- 대시보드 ---- */
@@ -141,7 +147,7 @@
       <div class="charts-2">
         <div class="chart-box" style="margin-top:0">
           <h3>학생별 지출</h3>
-          <p class="cap">회색 트랙은 개인 예산, 색 막대는 사용액입니다.</p>
+          <p class="cap">회색 트랙은 개인 예산, 색 막대는 사용액입니다. 잔여가 있으면 오른쪽에 함께 표시됩니다.</p>
           <div id="chart-students"></div>
         </div>
         <div class="chart-box" style="margin-top:0">
@@ -190,7 +196,8 @@
       <p class="muted bulk-hint">
         학급/조를 고르고 인당 예산·만료일을 정한 뒤, 명단 CSV 또는 <code>학번,이름</code> 붙여넣기로
         전원에게 <b>같은 금액·같은 기간</b>의 가상 키를 부여합니다.
-        헤더 <code>name,student_id</code> 와 <code>학번,이름</code> 모두 됩니다.
+        한 줄에 <code>학번,이름</code> (쉼표·탭·공백 구분). 예: <code>20261001,홍길동</code> → 별칭 <code>20261001-홍길동</code>.
+        헤더 <code>name,student_id</code> 와 <code>학번,이름</code> 모두 됩니다. 빈 줄은 무시됩니다.
       </p>
       <form id="class-form">
         <div class="form-grid">
@@ -306,6 +313,7 @@
     <p class="muted bulk-hint">
       학기·캠프가 끝나면 학급/조 또는 <b>만료됨</b> 필터로 모은 뒤 일괄 차단하거나 회수(삭제)하세요.
       차단은 나중에 해제할 수 있고, 회수는 LiteLLM에서 키를 지웁니다.
+      일부 학생만 금액을 더하거나 만료를 늘리려면 행의 <b>상세</b>를 엽니다.
     </p>
     <div class="bulk-actions">
       <label style="display:flex;align-items:center;gap:.35rem;font-size:.85rem">
@@ -362,6 +370,41 @@
         <button class="primary" type="submit">저장</button>
       </div>
     </form>
+    <p class="muted bulk-hint" style="margin:.7rem 0 0">예산을 더하거나 기존 만료일을 늘리려면 키 목록의 <b>상세</b>에서 충전·연장하세요. 여기서는 한도를 통째로 바꿉니다.</p>
+  </dialog>
+
+  <dialog id="detail-dlg">
+    <h3 style="margin-top:0">키 상세 — <span id="d-alias"></span></h3>
+    <div class="detail-now" id="d-now"></div>
+    <form id="detail-form">
+      <div class="form-grid">
+        <label>예산 충전 (USD)
+          <input id="d-add-budget" type="number" step="0.5" min="0.5" placeholder="예: 2">
+        </label>
+        <label>기존 만료일에 더하기
+          <select id="d-add-days">
+            <option value="">연장 안 함</option>
+            <option value="7">7일</option>
+            <option value="14">14일</option>
+            <option value="30">30일</option>
+            <option value="90">90일</option>
+          </select>
+        </label>
+        <label>또는 새 만료일
+          <input id="d-expires" type="date">
+        </label>
+      </div>
+      <p class="muted bulk-hint" id="d-expiry-hint"></p>
+      <div id="detail-preview" class="muted"></div>
+      <div id="detail-error" class="result-fail" style="margin-top:.45rem;font-size:.85rem"></div>
+      <div class="dlg-actions">
+        <button type="button" id="detail-cancel">닫기</button>
+        <button class="primary" type="submit" id="detail-submit">충전·연장 적용</button>
+      </div>
+    </form>
+    <h2 style="margin:1.1rem 0 .3rem">변경 이력</h2>
+    <p class="muted bulk-hint">누가·언제·얼마(또는 새 만료)를 남깁니다. LiteLLM 키 메타데이터에 저장됩니다.</p>
+    <div id="detail-history"></div>
   </dialog>
 
   <div id="error"></div>
@@ -537,6 +580,7 @@
             <td>${(k.models || []).map(esc).join(", ") || '<span class="muted">전체</span>'}</td>
             <td>${k.rpm_limit ?? "-"} / ${k.tpm_limit ?? "-"}</td>
             <td style="white-space:nowrap">
+              <button class="small" data-i="${i}" data-act="detail">상세</button>
               <button class="small" data-i="${i}" data-act="edit">수정</button>
               <button class="small" data-i="${i}" data-act="block">${k.blocked ? "해제" : "차단"}</button>
               <button class="small" data-i="${i}" data-act="del">삭제</button>
@@ -923,6 +967,176 @@
       finally { btn.disabled = false; }
     };
 
+    // ---- 키 상세: 충전(top-up) · 기존 만료일 연장 + 이력 ----
+    let detailTarget = null;
+    let detailHistory = [];
+
+    function moneyPlain(v) {
+      if (v == null || !Number.isFinite(Number(v))) return "—";
+      const n = Number(v);
+      return "$" + (Number.isInteger(n) ? n : n.toFixed(2));
+    }
+
+    function historyLine(h) {
+      const parts = [];
+      if (h.add_budget != null) {
+        const from = h.max_budget_before != null ? moneyPlain(h.max_budget_before) : "?";
+        const to = h.max_budget_after != null ? moneyPlain(h.max_budget_after) : "?";
+        parts.push(`+${moneyPlain(h.add_budget)} (${from} → ${to})`);
+      }
+      if (h.expires_after) {
+        const until = new Date(h.expires_after).toLocaleString("ko-KR");
+        if (h.add_days) parts.push(`+${h.add_days}일 · 만료 ${until}`);
+        else parts.push(`만료 ${until}`);
+      }
+      return parts.join(" · ") || "변경";
+    }
+
+    function renderDetailHistory(rows) {
+      if (!rows.length) {
+        $("detail-history").innerHTML = '<p class="muted">아직 충전·연장 이력이 없습니다.</p>';
+        return;
+      }
+      const newest = [...rows].reverse();
+      $("detail-history").innerHTML = "<table><thead><tr>"
+        + "<th>언제</th><th>누가</th><th>내용</th>"
+        + "</tr></thead><tbody>"
+        + newest.map((h) => `<tr>`
+          + `<td>${esc(h.at ? new Date(h.at).toLocaleString("ko-KR") : "—")}</td>`
+          + `<td>${esc(h.by || "—")}</td>`
+          + `<td>${esc(historyLine(h))}</td>`
+          + `</tr>`).join("")
+        + "</tbody></table>";
+    }
+
+    function nextExpiryPreview(currentExpires, addDays) {
+      const days = Number(addDays);
+      if (!Number.isFinite(days) || days <= 0) return null;
+      const now = new Date();
+      const cur = currentExpires ? new Date(currentExpires) : null;
+      const curOk = cur && !Number.isNaN(cur.getTime()) && cur.getTime() > now.getTime();
+      const base = curOk ? cur : now;
+      return new Date(base.getTime() + days * 86400000);
+    }
+
+    function updateDetailPreview() {
+      if (!detailTarget) return;
+      const add = $("d-add-budget").value;
+      const days = $("d-add-days").value;
+      const expires = $("d-expires").value;
+      const bits = [];
+      if (add) {
+        const n = Number(add);
+        if (detailTarget.max_budget == null) bits.push("무제한 키는 충전할 수 없습니다. 수정에서 한도를 먼저 정하세요.");
+        else if (n > 0) bits.push(`예산 ${moneyPlain(detailTarget.max_budget)} → ${moneyPlain(detailTarget.max_budget + n)}`);
+      }
+      if (expires && days) {
+        $("d-expiry-hint").textContent = "만료일이 있으면 달력 날짜를 쓰고, 일수 연장은 무시하려면 한쪽만 고르세요.";
+      } else {
+        $("d-expiry-hint").textContent = "";
+      }
+      if (expires && !days) {
+        bits.push(`만료 → ${expires} 당일 종료`);
+      } else if (days) {
+        const next = nextExpiryPreview(detailTarget.expires, days);
+        bits.push(`만료 → ${next.toLocaleString("ko-KR")} (기존일에 +${days}일)`);
+      }
+      $("detail-preview").innerHTML = bits.length
+        ? `미리보기 · ${bits.map(esc).join(" · ")}`
+        : "충전 금액이나 연장(일수·만료일)을 넣으면 미리보기가 나타납니다.";
+    }
+
+    function fillDetailNow(k, remaining) {
+      const rem = remaining != null ? remaining : (k.max_budget == null ? null : k.max_budget - (k.spend || 0));
+      const items = [
+        { k: "그룹", v: k.team_id ? teamAlias(k.team_id) : "없음" },
+        { k: "지출 / 예산", v: gauge(k.spend, k.max_budget) },
+        { k: "잔여", v: rem == null ? "무제한" : moneyPlain(rem) },
+        { k: "만료", v: expiryCell(k) },
+      ];
+      $("d-now").innerHTML = items.map((it) =>
+        `<div><div class="k">${it.k}</div><div class="v">${it.v}</div></div>`).join("");
+    }
+
+    async function openDetail(k) {
+      detailTarget = k;
+      detailHistory = [];
+      $("d-alias").textContent = k.key_alias || k.token?.slice(0, 12) || "";
+      $("d-add-budget").value = "";
+      $("d-add-days").value = "";
+      $("d-expires").value = "";
+      $("d-expires").min = todayYmd();
+      $("detail-error").textContent = "";
+      fillDetailNow(k);
+      renderDetailHistory([]);
+      updateDetailPreview();
+      $("detail-dlg").showModal();
+      try {
+        const info = await api("/api/keys/info?token=" + encodeURIComponent(k.token));
+        if (info.key) {
+          detailTarget = { ...k, ...info.key, token: k.token };
+          fillDetailNow(detailTarget, info.remaining);
+        }
+        detailHistory = info.history || [];
+        renderDetailHistory(detailHistory);
+        updateDetailPreview();
+      } catch (e) {
+        $("detail-history").innerHTML = `<p class="result-fail">이력을 불러오지 못했습니다: ${esc(e.message)}</p>`;
+      }
+    }
+
+    $("d-add-budget").addEventListener("input", updateDetailPreview);
+    $("d-add-days").addEventListener("change", () => {
+      if ($("d-add-days").value) $("d-expires").value = "";
+      updateDetailPreview();
+    });
+    $("d-expires").addEventListener("change", () => {
+      if ($("d-expires").value) $("d-add-days").value = "";
+      updateDetailPreview();
+    });
+    $("detail-cancel").onclick = () => $("detail-dlg").close();
+
+    $("detail-form").onsubmit = async (ev) => {
+      ev.preventDefault();
+      $("detail-error").textContent = "";
+      $("error").textContent = "";
+      if (!detailTarget) return;
+      const payload = { token: detailTarget.token };
+      const add = $("d-add-budget").value;
+      const days = $("d-add-days").value;
+      const expires = $("d-expires").value;
+      if (add) payload.add_budget = add;
+      if (days) payload.add_days = Number(days);
+      if (expires) payload.expires = expires;
+      if (!payload.add_budget && !payload.add_days && !payload.expires) {
+        $("detail-error").textContent = "충전 금액 또는 연장(만료일·일수)을 입력하세요";
+        return;
+      }
+      const preview = $("detail-preview").textContent.replace(/^미리보기 · /, "");
+      if (!confirm(`${detailTarget.key_alias || "이 키"}에 적용할까요?\n${preview}`)) return;
+      const btn = $("detail-submit");
+      btn.disabled = true;
+      try {
+        const out = await api("/api/keys/adjust", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        detailHistory = out.history || detailHistory;
+        renderDetailHistory(detailHistory);
+        $("d-add-budget").value = "";
+        $("d-add-days").value = "";
+        $("d-expires").value = "";
+        await refreshKeys();
+        const fresh = keyCache.find((x) => x.token === detailTarget.token);
+        if (fresh) {
+          detailTarget = fresh;
+          fillDetailNow(fresh, out.remaining);
+          updateDetailPreview();
+        }
+      } catch (e) { $("detail-error").textContent = e.message; }
+      finally { btn.disabled = false; }
+    };
+
     // ---- 수정 다이얼로그 (키/그룹 공용) ----
     let editTarget = null, editKind = "key";
     function openEdit(kind, obj) {
@@ -979,6 +1193,7 @@
           }
         } else {
           const k = keyCache[Number(ev.target.dataset.i)];
+          if (act === "detail") return openDetail(k);
           if (act === "edit") return openEdit("key", k);
           if (act === "del") {
             if (!confirm(`'${k.key_alias}' 키를 삭제할까요? 학생은 더 이상 사용할 수 없게 됩니다.`)) return;
