@@ -69,7 +69,7 @@ function seedDemo() {
     key_alias: "20261002-김철수",
     team_id: "team-1",
     max_budget: 2,
-    spend: 2,
+    spend: 2.4,
     expires: new Date(Date.now() - 86400000).toISOString(),
   });
   add({
@@ -103,6 +103,17 @@ function seedDemo() {
     team_id: null,
     max_budget: null,
     spend: 0,
+    expires: null,
+    budget_duration: null,
+    models: [],
+    rpm_limit: null,
+  });
+  add({
+    token: "sk-mock-unlim-used",
+    key_alias: "교사-실습",
+    team_id: null,
+    max_budget: null,
+    spend: 0.55,
     expires: null,
     budget_duration: null,
     models: [],
@@ -274,19 +285,6 @@ app.get("/api/analytics", (_req, res) => {
       requests: Math.max(1, Math.round(k.spend * 40)),
     }))
     .sort((a, b) => b.spend - a.spend);
-  // 차트 폴백·초과 문구 확인용: 무제한 키와 예산 초과 키
-  if (!keyStats.some((k) => k.remaining == null)) {
-    keyStats.push({
-      alias: "교사-실습", team: null, spend: 0.55, budget: null,
-      max_budget: null, remaining: null, requests: 12,
-    });
-  }
-  const over = keyStats.find((k) => k.alias === "20261002-김철수");
-  if (over && over.remaining >= 0) {
-    over.spend = 2.4;
-    over.remaining = -0.4;
-    over.requests = 96;
-  }
   const perTeam = new Map();
   for (const k of keyStats) {
     const name = k.team || "(그룹 없음)";

@@ -6,7 +6,7 @@ const { pathToFileURL } = require("node:url");
 let hasRemaining, remainingPhrase, remainingTipLine, rankValueText, money;
 
 before(async () => {
-  const mod = await import(pathToFileURL(path.join(__dirname, "../public/remaining-label.js")).href);
+  const mod = await import(pathToFileURL(path.join(__dirname, "../public/remaining-label.mjs")).href);
   hasRemaining = mod.hasRemaining;
   remainingPhrase = mod.remainingPhrase;
   remainingTipLine = mod.remainingTipLine;

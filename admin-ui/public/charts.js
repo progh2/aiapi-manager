@@ -1,7 +1,7 @@
 // 사용량 대시보드 차트. 외부 차트 라이브러리 없이 인라인 SVG로 그린다.
 // 색은 역할별 CSS 변수(--series-1 등)를 쓰고, 라이트/다크 값은 style에서 전환된다.
 
-import { money, hasRemaining, remainingTipLine, rankValueText } from "./remaining-label.js";
+import { money, hasRemaining, remainingTipLine, rankValueText } from "./remaining-label.mjs";
 
 const NS = "http://www.w3.org/2000/svg";
 const el = (name, attrs = {}) => {
