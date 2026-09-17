@@ -7,6 +7,7 @@ const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
 const { adjustKey, keyDetail } = require("./lib/key-adjust");
 const { resolveIssueModels, teamModelsFor } = require("./lib/model-allowlist");
+const { issueCampKeys } = require("./lib/camp-keys");
 
 const {
   FIREBASE_PROJECT_ID,
@@ -137,6 +138,19 @@ app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
     const n = out.results.length;
     const fail = out.results.filter((r) => r.error).length;
     console.log(`${req.adminEmail} 이(가) 일괄 발급: ${n}명 (실패 ${fail})`);
+    res.json(out);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+// 캠프 짧은 키 N개. 명단 없이 인원만. 당일 만료가 기본값.
+// #20 모델 필수·스케줄 회수는 issueCampKeys 의 policy 훅.
+app.post("/api/keys/camp", requireAdmin, async (req, res) => {
+  try {
+    const out = await issueCampKeys(req.body, { litellm });
+    const fail = out.results.filter((r) => r.error).length;
+    console.log(`${req.adminEmail} 이(가) 캠프 키 발급: ${out.count}개 (실패 ${fail}) 만료 ${out.expires}`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
