@@ -151,7 +151,7 @@ async function litellm(p, method = "GET", body) {
   }
   if (p === "/team/update") {
     const t = teams.find((x) => x.team_id === body.team_id);
-    if (!t) throw new Error("그룹 없음");
+    if (!t) throw new Error("학급 없음");
     Object.assign(t, body);
     return t;
   }
@@ -358,7 +358,7 @@ app.get("/api/analytics", (_req, res) => {
     .sort((a, b) => b.spend - a.spend);
   const perTeam = new Map();
   for (const k of keyStats) {
-    const name = k.team || "(그룹 없음)";
+    const name = k.team || "학급 없음";
     perTeam.set(name, Number(((perTeam.get(name) || 0) + k.spend).toFixed(3)));
   }
   const teamStats = [...perTeam.entries()].map(([name, spend]) => ({ name, spend }));
