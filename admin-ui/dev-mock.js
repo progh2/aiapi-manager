@@ -6,6 +6,7 @@ const express = require("express");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
 const { adjustKey, keyDetail } = require("./lib/key-adjust");
+const { resolveIssueModels, simulateChatCompletion } = require("./lib/model-allowlist");
 
 const PORT = Number(process.env.PORT || 3456);
 const app = express();
@@ -37,6 +38,7 @@ function seedDemo() {
     max_budget: 50,
     spend: 4.2,
     budget_duration: "30d",
+    models: ["gpt-4o-mini"],
   });
   teams.push({
     team_id: "team-2",
@@ -44,6 +46,7 @@ function seedDemo() {
     max_budget: 20,
     spend: 0.5,
     budget_duration: null,
+    models: ["gpt-4o-mini"],
   });
   const add = (rec) => {
     keys.push({
@@ -141,6 +144,7 @@ async function litellm(p, method = "GET", body) {
       max_budget: body.max_budget ?? null,
       spend: 0,
       budget_duration: body.budget_duration || null,
+      models: Array.isArray(body.models) ? body.models : [],
     };
     teams.push(t);
     return t;
@@ -200,7 +204,7 @@ async function litellm(p, method = "GET", body) {
     if (body.budget_duration !== undefined) k.budget_duration = body.budget_duration;
     if (body.rpm_limit !== undefined) k.rpm_limit = body.rpm_limit;
     if (body.tpm_limit !== undefined) k.tpm_limit = body.tpm_limit;
-    if (body.models) k.models = body.models;
+    if (Array.isArray(body.models)) k.models = body.models;
     if (body.duration) {
       if (/^\d+s$/.test(body.duration)) {
         k.expires = new Date(Date.now() + Number(body.duration.slice(0, -1)) * 1000).toISOString();
@@ -244,7 +248,9 @@ app.post("/api/teams", (req, res) => {
     .catch((e) => res.status(502).json({ error: e.message }));
 });
 app.post("/api/teams/update", (req, res) => {
-  litellm("/team/update", "POST", req.body).then((d) => res.json(d))
+  const body = { team_id: req.body.team_id, ...keyGenerateParams(req.body) };
+  if (Array.isArray(req.body.models)) body.models = req.body.models;
+  litellm("/team/update", "POST", body).then((d) => res.json(d))
     .catch((e) => res.status(502).json({ error: e.message }));
 });
 app.post("/api/teams/delete", (req, res) => {
@@ -254,13 +260,33 @@ app.post("/api/teams/delete", (req, res) => {
 app.get("/api/keys", (_req, res) => res.json({ keys }));
 app.post("/api/keys", async (req, res) => {
   try {
+    const params = keyGenerateParams(req.body);
+    const team = teams.find((t) => t.team_id === req.body.team_id);
+    const models = resolveIssueModels(req.body.models, team && team.models);
+    if (models.length) params.models = models;
+    else delete params.models;
     res.json(await litellm("/key/generate", "POST", {
       key_alias: req.body.alias,
       team_id: req.body.team_id || undefined,
-      ...keyGenerateParams(req.body),
+      ...params,
     }));
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
+  }
+});
+app.post("/api/mock/chat", (req, res) => {
+  try {
+    const k = keys.find((x) => x.token === req.body.token);
+    if (!k) return res.status(404).json({ error: "키 없음" });
+    const team = teams.find((t) => t.team_id === k.team_id);
+    const out = simulateChatCompletion({
+      model: req.body.model,
+      keyModels: k.models,
+      teamModels: team && team.models,
+    });
+    res.json(out);
+  } catch (e) {
+    res.status(e.status || 403).json({ error: e.message });
   }
 });
 app.post("/api/keys/bulk", async (req, res) => {
@@ -345,5 +371,5 @@ app.get("/api/analytics", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄 예산·만료 회수·개별 충전 데모)`);
+  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄 예산·모델 허용 목록·만료 회수·개별 충전 데모)`);
 });

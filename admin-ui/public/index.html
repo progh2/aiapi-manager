@@ -162,31 +162,36 @@
       <legend>학급/조 관리</legend>
       <p class="muted" style="margin:.2rem 0 .6rem; font-size:.82rem">
         학급/조 예산·제한은 소속 학생 키 전체의 <b>합산</b> 사용량에 적용됩니다. 개별 키 제한과 중첩 적용됩니다.</p>
-      <form id="team-form" class="form-grid">
-        <label>학급/조 이름 *
-          <input id="t-alias" placeholder="예: 3학년A반, 캡스톤1조" required>
-        </label>
-        <label>학급/조 예산 (USD)
-          <input id="t-budget" type="number" step="1" min="0" placeholder="비우면 무제한">
-        </label>
-        <label>예산 리셋 주기
-          <select id="t-budget-duration">
-            <option value="">없음 (총액 한도)</option>
-            <option value="1d">매일</option>
-            <option value="7d">매주</option>
-            <option value="30d">매월(30일)</option>
-          </select>
-        </label>
-        <label>학급/조 RPM
-          <input id="t-rpm" type="number" min="1" placeholder="무제한">
-        </label>
-        <label>학급/조 TPM
-          <input id="t-tpm" type="number" min="1" placeholder="무제한">
-        </label>
-        <label>&nbsp;<button class="primary" type="submit">학급/조 생성</button></label>
+      <form id="team-form">
+        <div class="form-grid">
+          <label>학급/조 이름 *
+            <input id="t-alias" placeholder="예: 3학년A반, 캡스톤1조" required>
+          </label>
+          <label>학급/조 예산 (USD)
+            <input id="t-budget" type="number" step="1" min="0" placeholder="비우면 무제한">
+          </label>
+          <label>예산 리셋 주기
+            <select id="t-budget-duration">
+              <option value="">없음 (총액 한도)</option>
+              <option value="1d">매일</option>
+              <option value="7d">매주</option>
+              <option value="30d">매월(30일)</option>
+            </select>
+          </label>
+          <label>학급/조 RPM
+            <input id="t-rpm" type="number" min="1" placeholder="무제한">
+          </label>
+          <label>학급/조 TPM
+            <input id="t-tpm" type="number" min="1" placeholder="무제한">
+          </label>
+        </div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(수업에서 쓸 모델만. 안 고르면 제한 없음)</span></div>
+        <div id="t-model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
+        <p class="muted bulk-hint">허용 목록은 LiteLLM 학급 <code>models</code>에 저장되고, 새로 발급하는 키에도 복사됩니다. 목록에 없는 모델은 프록시가 거부합니다.</p>
+        <div style="margin-top:.7rem"><button class="primary" type="submit">학급/조 생성</button></div>
       </form>
       <table>
-        <thead><tr><th>학급/조</th><th>지출 / 예산</th><th>리셋 주기</th><th>RPM/TPM</th><th>키 수</th><th></th></tr></thead>
+        <thead><tr><th>학급/조</th><th>지출 / 예산</th><th>리셋 주기</th><th>허용 모델</th><th>RPM/TPM</th><th>키 수</th><th></th></tr></thead>
         <tbody id="team-rows"></tbody>
       </table>
     </fieldset>
@@ -234,6 +239,8 @@
             </select>
           </label>
         </div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(예: gpt-4o-mini만. 안 고르면 학급 설정을 따름)</span></div>
+        <div id="bulk-model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
         <p class="muted bulk-hint" id="bulk-expiry-hint"></p>
         <div class="file-row">
           <span>명단 CSV</span>
@@ -290,7 +297,7 @@
             <input id="tpm" type="number" min="1" placeholder="비우면 무제한">
           </label>
         </div>
-        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(아무것도 안 고르면 전체/학급/조 설정 따름)</span></div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(예: gpt-4o-mini만. 안 고르면 학급 설정/전체)</span></div>
         <div id="model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
         <p class="muted bulk-hint">여러 명은 위 <b>학급 일괄 예산 할당</b>에서 CSV 또는 명단으로 부여하세요.</p>
         <div style="margin-top:.9rem"><button class="primary" type="submit">발급</button></div>
@@ -323,6 +330,20 @@
       <button type="button" id="revoke-delete">선택한 키 일괄 회수(삭제)</button>
     </div>
     <div id="revoke-result"></div>
+    <div id="mock-chat-panel" style="display:none; margin:.8rem 0; padding:.7rem .8rem; background:#f7f7f5; border-radius:8px">
+      <div style="font-size:.85rem; font-weight:600; margin-bottom:.45rem">모델 호출 시험 (mock)</div>
+      <p class="muted bulk-hint">LiteLLM이 키·학급 <code>models</code> 밖 요청을 거부하는 것과 같은 규칙입니다. 배포 UI에는 없습니다.</p>
+      <div class="form-grid">
+        <label>키
+          <select id="mock-chat-key"></select>
+        </label>
+        <label>모델
+          <select id="mock-chat-model"></select>
+        </label>
+        <label>&nbsp;<button type="button" class="primary" id="mock-chat-go">호출</button></label>
+      </div>
+      <div id="mock-chat-result" class="muted" style="margin-top:.45rem"></div>
+    </div>
     <table>
       <thead><tr>
         <th></th><th>별칭</th><th>학급/조</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
@@ -470,11 +491,41 @@
       ).join("") || '<span class="muted">모델 없음</span>';
     }
 
+    function checkedModels(prefix) {
+      return [...document.querySelectorAll(`input[name="${prefix}"]:checked`)].map((c) => c.value);
+    }
+
+    function formatModels(list, fallback) {
+      return (list && list.length)
+        ? list.map(esc).join(", ")
+        : `<span class="muted">${fallback || "전체"}</span>`;
+    }
+
+    function keyModelLabel(k) {
+      if ((k.models || []).length) return k.models.map(esc).join(", ");
+      const team = teamCache.find((t) => t.team_id === k.team_id);
+      if ((team?.models || []).length) {
+        return team.models.map(esc).join(", ") + ' <span class="muted">학급</span>';
+      }
+      return '<span class="muted">전체</span>';
+    }
+
     async function loadModels() {
       try {
         availableModels = (await api("/api/models")).models;
         modelCheckboxes($("model-boxes"), "models");
-      } catch (e) { $("model-boxes").textContent = "모델 목록 로드 실패: " + e.message; }
+        modelCheckboxes($("t-model-boxes"), "t-models");
+        modelCheckboxes($("bulk-model-boxes"), "bulk-models");
+        if ($("mock-chat-model")) {
+          $("mock-chat-model").innerHTML = availableModels
+            .map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+        }
+      } catch (e) {
+        const msg = "모델 목록 로드 실패: " + e.message;
+        $("model-boxes").textContent = msg;
+        $("t-model-boxes").textContent = msg;
+        $("bulk-model-boxes").textContent = msg;
+      }
     }
 
     function gauge(spend, budget) {
@@ -508,13 +559,14 @@
             <td>${t.team_alias || t.team_id.slice(0, 8)}</td>
             <td>${gauge(t.spend, t.max_budget)}</td>
             <td>${DUR_LABEL[t.budget_duration] || '<span class="muted">없음</span>'}</td>
+            <td>${formatModels(t.models)}</td>
             <td>${t.rpm_limit ?? "-"} / ${t.tpm_limit ?? "-"}</td>
             <td>${keyCount(t)}</td>
             <td style="white-space:nowrap">
               <button class="small" data-ti="${i}" data-act="t-edit">수정</button>
               <button class="small" data-ti="${i}" data-act="t-del">삭제</button>
             </td>
-          </tr>`).join("") || '<tr><td colspan="6" class="muted">학급 없음</td></tr>';
+          </tr>`).join("") || '<tr><td colspan="7" class="muted">학급 없음</td></tr>';
         for (const sel of [$("team-select"), $("filter-team"), $("bulk-team")]) {
           const cur = sel.value;
           const empty = sel.id === "filter-team" ? "전체 학급" : "학급 없음";
@@ -577,7 +629,7 @@
             <td>${gauge(k.spend, k.max_budget)}</td>
             <td>${DUR_LABEL[k.budget_duration] || '<span class="muted">없음</span>'}</td>
             <td>${expiryCell(k)}</td>
-            <td>${(k.models || []).map(esc).join(", ") || '<span class="muted">전체</span>'}</td>
+            <td>${keyModelLabel(k)}</td>
             <td>${k.rpm_limit ?? "-"} / ${k.tpm_limit ?? "-"}</td>
             <td style="white-space:nowrap">
               <button class="small" data-i="${i}" data-act="detail">상세</button>
@@ -594,6 +646,7 @@
         ? `${vis.length}개` + (vis.length !== keyCache.length ? ` / 전체 ${keyCache.length}개` : "")
         : "";
       syncSelectAll();
+      fillMockChatKeys();
     }
     $("filter-team").onchange = renderKeys;
     $("filter-expiry").onchange = renderKeys;
@@ -718,6 +771,7 @@
             budget_duration: $("t-budget-duration").value,
             rpm_limit: $("t-rpm").value,
             tpm_limit: $("t-tpm").value,
+            models: checkedModels("t-models"),
           }),
         });
         $("t-alias").value = "";
@@ -727,7 +781,6 @@
 
     // ---- 발급 (1명) ----
     function issueSettings() {
-      const models = [...document.querySelectorAll('input[name="models"]:checked')].map((c) => c.value);
       return {
         team_id: $("team-select").value,
         budget: $("budget").value,
@@ -736,7 +789,7 @@
         expires: $("expires").value,
         rpm_limit: $("rpm").value,
         tpm_limit: $("tpm").value,
-        models,
+        models: checkedModels("models"),
       };
     }
 
@@ -761,7 +814,19 @@
     function toggleBulkTeamName() {
       $("bulk-team-name-wrap").style.display = $("bulk-team").value === "__new__" ? "" : "none";
     }
-    $("bulk-team").onchange = toggleBulkTeamName;
+    function syncModelsFromTeam(prefix, teamId) {
+      const t = teamCache.find((x) => x.team_id === teamId);
+      const boxes = prefix === "bulk-models" ? $("bulk-model-boxes") : $("model-boxes");
+      if (boxes && availableModels.length) modelCheckboxes(boxes, prefix, t?.models || []);
+    }
+    $("bulk-team").onchange = () => {
+      toggleBulkTeamName();
+      if ($("bulk-team").value && $("bulk-team").value !== "__new__") {
+        syncModelsFromTeam("bulk-models", $("bulk-team").value);
+      }
+      updateBulkPreview();
+    };
+    $("team-select").onchange = () => syncModelsFromTeam("models", $("team-select").value);
 
     function todayYmd() {
       const d = new Date();
@@ -787,8 +852,10 @@
       let expiry = "무기한";
       if (expires) expiry = `${expires} 당일 종료`;
       else if (duration) expiry = duration;
+      const models = checkedModels("bulk-models");
+      const modelTxt = models.length ? models.join(", ") : "학급 설정/전체";
       $("bulk-preview").innerHTML = students.length
-        ? `미리보기 <b>${students.length}명</b> · 인당 $${esc(budget || "0")} · ${esc(expiry)}`
+        ? `미리보기 <b>${students.length}명</b> · 인당 $${esc(budget || "0")} · ${esc(expiry)} · 모델 ${esc(modelTxt)}`
           + (names ? `<br><span class="muted">${esc(names)}${esc(more)}</span>` : "")
           + (errors.length ? `<br><span class="result-fail">파싱 실패 ${errors.length}줄</span>` : "")
         : (errors.length
@@ -802,6 +869,7 @@
     $("bulk-budget").addEventListener("input", updateBulkPreview);
     $("bulk-expires").addEventListener("change", updateBulkPreview);
     $("bulk-duration").addEventListener("change", updateBulkPreview);
+    $("bulk-model-boxes").addEventListener("change", updateBulkPreview);
     $("bulk-file").addEventListener("change", () => {
       const f = $("bulk-file").files[0];
       if (!f) return;
@@ -826,6 +894,7 @@
         + (out.max_budget != null ? ` · 인당 $${esc(out.max_budget)}` : "")
         + (out.expires ? ` · 만료 ${esc(out.expires)}` : "")
         + (out.team_created ? ` · 학급 생성됨` : "")
+        + ((out.models || []).length ? ` · 모델 ${esc(out.models.join(", "))}` : "")
         + `</p>`;
       if (ok.length) {
         const csv = "alias,student_id,name,api_key\n" + ok.map((r) =>
@@ -938,6 +1007,7 @@
         budget_duration: $("bulk-budget-duration").value,
         duration: $("bulk-duration").value,
         expires: $("bulk-expires").value,
+        models: checkedModels("bulk-models"),
       };
       if (teamSel === "__new__") {
         const name = $("bulk-team-name").value.trim();
@@ -1049,10 +1119,11 @@
     function fillDetailNow(k, remaining) {
       const rem = remaining != null ? remaining : (k.max_budget == null ? null : k.max_budget - (k.spend || 0));
       const items = [
-        { k: "그룹", v: k.team_id ? teamAlias(k.team_id) : "없음" },
+        { k: "학급/조", v: k.team_id ? teamAlias(k.team_id) : "없음" },
         { k: "지출 / 예산", v: gauge(k.spend, k.max_budget) },
         { k: "잔여", v: rem == null ? "무제한" : moneyPlain(rem) },
         { k: "만료", v: expiryCell(k) },
+        { k: "허용 모델", v: keyModelLabel(k) },
       ];
       $("d-now").innerHTML = items.map((it) =>
         `<div><div class="k">${it.k}</div><div class="v">${it.v}</div></div>`).join("");
@@ -1150,8 +1221,8 @@
       $("e-rpm").value = obj.rpm_limit ?? "";
       $("e-tpm").value = obj.tpm_limit ?? "";
       $("e-duration-wrap").style.display = kind === "key" ? "" : "none";
-      $("e-models-wrap").style.display = kind === "key" ? "" : "none";
-      if (kind === "key") modelCheckboxes($("e-model-boxes"), "e-models", obj.models || []);
+      $("e-models-wrap").style.display = "";
+      modelCheckboxes($("e-model-boxes"), "e-models", obj.models || []);
       $("edit-dlg").showModal();
     }
     $("edit-cancel").onclick = () => $("edit-dlg").close();
@@ -1164,8 +1235,8 @@
           rpm_limit: $("e-rpm").value,
           tpm_limit: $("e-tpm").value,
         };
+        const models = checkedModels("e-models");
         if (editKind === "key") {
-          const models = [...document.querySelectorAll('input[name="e-models"]:checked')].map((c) => c.value);
           await api("/api/keys/update", {
             method: "POST",
             body: JSON.stringify({ token: editTarget.token, duration: $("e-duration").value, models, ...common }),
@@ -1173,7 +1244,7 @@
         } else {
           await api("/api/teams/update", {
             method: "POST",
-            body: JSON.stringify({ team_id: editTarget.team_id, ...common }),
+            body: JSON.stringify({ team_id: editTarget.team_id, models, ...common }),
           });
         }
         refreshKeys();
@@ -1206,6 +1277,35 @@
         refreshKeys();
       } catch (e) { $("error").textContent = e.message; }
     });
+
+    function fillMockChatKeys() {
+      const sel = $("mock-chat-key");
+      if (!sel || !window.ADMIN_UI_MOCK) return;
+      const cur = sel.value;
+      sel.innerHTML = keyCache.map((k) =>
+        `<option value="${esc(k.token)}">${esc(k.key_alias || k.token)}</option>`).join("");
+      if (cur) sel.value = cur;
+    }
+    if (window.ADMIN_UI_MOCK) {
+      $("mock-chat-panel").style.display = "";
+      $("mock-chat-go").onclick = async () => {
+        const box = $("mock-chat-result");
+        try {
+          const out = await api("/api/mock/chat", {
+            method: "POST",
+            body: JSON.stringify({
+              token: $("mock-chat-key").value,
+              model: $("mock-chat-model").value,
+            }),
+          });
+          box.className = "result-ok";
+          box.textContent = `허용됨 — ${out.model}`;
+        } catch (e) {
+          box.className = "result-fail";
+          box.textContent = "거부 — " + e.message;
+        }
+      };
+    }
   </script>
 </body>
 </html>
