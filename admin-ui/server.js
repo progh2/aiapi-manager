@@ -269,7 +269,7 @@ app.get("/api/analytics", requireAdmin, async (req, res) => {
     // 그룹별 합계
     const perTeam = new Map();
     for (const k of keyStats) {
-      const name = k.team || "(그룹 없음)";
+      const name = k.team || "학급 없음";
       perTeam.set(name, (perTeam.get(name) || 0) + k.spend);
     }
 
