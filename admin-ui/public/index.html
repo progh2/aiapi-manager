@@ -94,6 +94,19 @@
     tr.result-ok-row td { background: #e6f4ea; }
     .file-row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-top: .7rem; font-size: .82rem; color: #555; }
     code { background: #f3f3f1; padding: .05rem .25rem; border-radius: 3px; }
+    .camp-codes { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .7rem; margin-top: .6rem; }
+    .camp-card { border: 1px solid #e5e5e5; border-radius: 8px; padding: .7rem .85rem; background: #fff; }
+    .camp-card .n { font-size: .75rem; color: #777; }
+    .camp-card .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.55rem; letter-spacing: .08em; font-weight: 700; margin: .2rem 0 .15rem; }
+    .camp-card .key { font-size: .78rem; word-break: break-all; }
+    #camp-print-sheet { display: none; }
+    @media print {
+      body * { visibility: hidden; }
+      #camp-print-sheet, #camp-print-sheet * { visibility: visible; }
+      #camp-print-sheet { display: block; position: absolute; left: 0; top: 0; width: 100%; padding: 1rem; }
+      .camp-print-list { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .camp-print-list li { font-size: 1.6rem; letter-spacing: .08em; margin: .45rem 0; font-weight: 700; }
+    }
   </style>
 </head>
 <body>
@@ -257,6 +270,54 @@
       <div id="bulk-result"></div>
     </fieldset>
 
+    <fieldset id="camp-box">
+      <legend>캠프 짧은 키 (명단 없이 N개)</legend>
+      <p class="muted bulk-hint">
+        중학생 체험캠프처럼 <b>명단이 없어도</b> 인원 N만큼 짧은 코드를 만듭니다.
+        기본 만료는 <b>오늘 23:59</b>입니다. 칠판에는 <code>CAMP-A7K2</code>처럼 적고,
+        학생 API 키는 앞에 <code>sk-</code>를 붙인 <code>sk-CAMP-A7K2</code>입니다.
+        LiteLLM이 짧은 커스텀 키를 거절하면 장문 <code>sk-…</code>를 만들고 목록에 코드↔키 매핑을 보여 줍니다.
+        (#20 모델 필수·자정 회수 스케줄은 아직 강제하지 않습니다.)
+      </p>
+      <form id="camp-form">
+        <div class="form-grid">
+          <label>인원 N *
+            <input id="camp-count" type="number" min="1" max="200" value="30" required>
+          </label>
+          <label>짧은 prefix
+            <input id="camp-prefix" value="CAMP" maxlength="8" placeholder="CAMP">
+          </label>
+          <label>인당 예산 (USD)
+            <input id="camp-budget" type="number" step="0.5" min="0" value="1">
+          </label>
+          <label>만료일
+            <input id="camp-expires" type="date">
+          </label>
+          <label>소속 학급/조
+            <select id="camp-team">
+              <option value="">학급 없음</option>
+              <option value="__new__">+ 새 학급 만들기</option>
+            </select>
+          </label>
+          <label id="camp-team-name-wrap" style="display:none">새 학급 이름
+            <input id="camp-team-name" placeholder="예: 캠프1일차">
+          </label>
+          <label>분당 요청 제한 (RPM)
+            <input id="camp-rpm" type="number" min="1" value="10" placeholder="무제한">
+          </label>
+        </div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(예: gpt-4o-mini만. 안 고르면 학급 설정/전체. #20에서 필수로 바꿀 예정)</span></div>
+        <div id="camp-model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
+        <p class="muted bulk-hint" id="camp-preview"></p>
+        <div class="bulk-actions">
+          <button class="primary" type="submit" id="camp-submit">짧은 키 N개 만들기</button>
+          <span class="muted">헷갈리는 글자(0/O, 1/I/L)는 빼 둡니다.</span>
+        </div>
+      </form>
+      <div id="camp-result"></div>
+    </fieldset>
+    <div id="camp-print-sheet"></div>
+
     <fieldset>
       <legend>키 발급 (1명)</legend>
       <form id="issue-form">
@@ -299,7 +360,7 @@
         </div>
         <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(예: gpt-4o-mini만. 안 고르면 학급 설정/전체)</span></div>
         <div id="model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
-        <p class="muted bulk-hint">여러 명은 위 <b>학급 일괄 예산 할당</b>에서 CSV 또는 명단으로 부여하세요.</p>
+        <p class="muted bulk-hint">여러 명은 위 <b>학급 일괄 예산 할당</b>, 명단 없는 캠프는 <b>캠프 짧은 키</b>를 쓰세요.</p>
         <div style="margin-top:.9rem"><button class="primary" type="submit">발급</button></div>
       </form>
       <div id="new-key"></div>
@@ -516,6 +577,7 @@
         modelCheckboxes($("model-boxes"), "models");
         modelCheckboxes($("t-model-boxes"), "t-models");
         modelCheckboxes($("bulk-model-boxes"), "bulk-models");
+        modelCheckboxes($("camp-model-boxes"), "camp-models");
         if ($("mock-chat-model")) {
           $("mock-chat-model").innerHTML = availableModels
             .map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
@@ -525,6 +587,7 @@
         $("model-boxes").textContent = msg;
         $("t-model-boxes").textContent = msg;
         $("bulk-model-boxes").textContent = msg;
+        $("camp-model-boxes").textContent = msg;
       }
     }
 
@@ -567,16 +630,18 @@
               <button class="small" data-ti="${i}" data-act="t-del">삭제</button>
             </td>
           </tr>`).join("") || '<tr><td colspan="7" class="muted">학급 없음</td></tr>';
-        for (const sel of [$("team-select"), $("filter-team"), $("bulk-team")]) {
+        for (const sel of [$("team-select"), $("filter-team"), $("bulk-team"), $("camp-team")]) {
+          if (!sel) continue;
           const cur = sel.value;
           const empty = sel.id === "filter-team" ? "전체 학급" : "학급 없음";
-          const extra = sel.id === "bulk-team"
+          const extra = (sel.id === "bulk-team" || sel.id === "camp-team")
             ? `<option value="__new__">+ 새 학급 만들기</option>` : "";
           sel.innerHTML = `<option value="">${empty}</option>` + extra +
             teamCache.map((t) => `<option value="${t.team_id}">${t.team_alias || t.team_id.slice(0, 8)}</option>`).join("");
           sel.value = cur;
         }
         toggleBulkTeamName();
+        toggleCampTeamName();
       } catch (e) { $("error").textContent = e.message; }
     }
 
@@ -816,7 +881,9 @@
     }
     function syncModelsFromTeam(prefix, teamId) {
       const t = teamCache.find((x) => x.team_id === teamId);
-      const boxes = prefix === "bulk-models" ? $("bulk-model-boxes") : $("model-boxes");
+      const boxes = prefix === "bulk-models" ? $("bulk-model-boxes")
+        : prefix === "camp-models" ? $("camp-model-boxes")
+        : $("model-boxes");
       if (boxes && availableModels.length) modelCheckboxes(boxes, prefix, t?.models || []);
     }
     $("bulk-team").onchange = () => {
@@ -836,6 +903,137 @@
     }
     $("bulk-expires").min = todayYmd();
     $("expires").min = todayYmd();
+    $("camp-expires").min = todayYmd();
+    if (!$("camp-expires").value) $("camp-expires").value = todayYmd();
+
+    function toggleCampTeamName() {
+      $("camp-team-name-wrap").style.display = $("camp-team").value === "__new__" ? "" : "none";
+    }
+    $("camp-team").onchange = () => {
+      toggleCampTeamName();
+      if ($("camp-team").value && $("camp-team").value !== "__new__") {
+        syncModelsFromTeam("camp-models", $("camp-team").value);
+      }
+      updateCampPreview();
+    };
+
+    function updateCampPreview() {
+      const n = Number($("camp-count").value);
+      const prefix = ($("camp-prefix").value || "CAMP").trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "CAMP";
+      const expires = $("camp-expires").value || todayYmd();
+      const budget = $("camp-budget").value || "1";
+      $("camp-preview").innerHTML = Number.isInteger(n) && n > 0
+        ? `미리보기 <b>${n}개</b> · prefix <code>${esc(prefix)}</code> · 예: <code>${esc(prefix)}-A7K2</code> → API 키 <code>sk-${esc(prefix)}-A7K2</code> · 인당 $${esc(budget)} · <b>${esc(expires)} 당일 종료</b>`
+        : "인원 N을 넣으면 미리보기가 나타납니다.";
+    }
+    $("camp-count").addEventListener("input", updateCampPreview);
+    $("camp-prefix").addEventListener("input", updateCampPreview);
+    $("camp-budget").addEventListener("input", updateCampPreview);
+    $("camp-expires").addEventListener("change", updateCampPreview);
+    updateCampPreview();
+
+    function renderCampResults(out) {
+      const results = out.results || [];
+      const ok = results.filter((r) => r.key);
+      const fail = results.filter((r) => r.error);
+      const mapped = ok.filter((r) => r.mapped).length;
+      const box = $("camp-result");
+      let html = `<p style="margin:.8rem 0 .4rem"><b>캠프 짧은 키</b> — `
+        + `<span class="result-ok">성공 ${ok.length}개</span>`
+        + (fail.length ? ` · <span class="badge red">실패 ${fail.length}건</span>` : "")
+        + ` · 만료 <b>${esc(out.expires || "")} 당일 종료</b>`
+        + (out.max_budget != null ? ` · 인당 $${esc(out.max_budget)}` : "")
+        + (out.prefix ? ` · prefix ${esc(out.prefix)}` : "")
+        + (mapped ? ` · 장문 키 매핑 ${mapped}개` : "")
+        + `</p>`;
+      html += `<p class="bulk-hint">칠판에는 짧은 코드만 적으세요. 학생 코드의 <code>api_key</code>는 `
+        + (mapped ? `목록의 장문 키입니다.` : `짧은 코드 앞에 <code>sk-</code>를 붙인 값입니다.`)
+        + `</p>`;
+      if (ok.length) {
+        const csv = (out.print && out.print.csv) || ("no,code,api_key,alias,expires\n" + ok.map((r, i) =>
+          [i + 1, r.code, r.key, r.alias || r.code, out.expires || ""].join(",")).join("\n"));
+        const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+        const text = (out.print && out.print.text) || ok.map((r) => r.code).join("\n");
+        html += `<div class="bulk-actions">`
+          + `<a href="${url}" download="camp_keys.csv">CSV 다운로드</a>`
+          + `<button type="button" class="small" id="camp-copy">짧은 코드 복사</button>`
+          + `<button type="button" class="small" id="camp-copy-keys">API 키 복사</button>`
+          + `<button type="button" class="small" id="camp-print">인쇄용 목록</button>`
+          + `<span class="muted">(이 페이지를 벗어나면 다시 받을 수 없음)</span>`
+          + `</div>`;
+        html += `<div class="camp-codes">` + ok.map((r, i) =>
+          `<div class="camp-card">`
+          + `<div class="n">${i + 1} / ${ok.length}</div>`
+          + `<div class="code">${esc(r.code)}</div>`
+          + `<div class="key muted">API 키 <code>${esc(r.key)}</code></div>`
+          + (r.mapped ? `<div class="muted" style="font-size:.75rem;margin-top:.15rem">LiteLLM 장문 키와 매핑됨</div>` : "")
+          + `</div>`).join("") + `</div>`;
+        const printItems = ok.map((r, i) =>
+          `<li>${esc(r.code)} <span style="font-size:.9rem;font-weight:400">— ${esc(r.key)}</span></li>`).join("");
+        $("camp-print-sheet").innerHTML = `<h1>캠프 키 ${ok.length}개 · ${esc(out.expires || "")} 당일 종료</h1>`
+          + `<p>짧은 코드(굵게)를 칠판·명찰에 쓰고, API 키는 실습 코드에 넣습니다.</p>`
+          + `<ol class="camp-print-list">${printItems}</ol>`;
+        box.innerHTML = html;
+        $("camp-copy").onclick = async () => {
+          try { await navigator.clipboard.writeText(text); $("camp-copy").textContent = "복사됨"; }
+          catch { $("error").textContent = "복사에 실패했습니다. CSV를 내려받으세요."; }
+        };
+        $("camp-copy-keys").onclick = async () => {
+          const keys = ok.map((r) => `${r.code}\t${r.key}`).join("\n");
+          try { await navigator.clipboard.writeText(keys); $("camp-copy-keys").textContent = "복사됨"; }
+          catch { $("error").textContent = "복사에 실패했습니다."; }
+        };
+        $("camp-print").onclick = () => window.print();
+      } else {
+        box.innerHTML = html;
+      }
+      if (fail.length) {
+        box.innerHTML += `<table><thead><tr><th>코드</th><th>오류</th></tr></thead><tbody>`
+          + fail.map((r) => `<tr class="result-fail-row"><td><code>${esc(r.code)}</code></td>`
+            + `<td class="result-fail">${esc(r.error)}</td></tr>`).join("")
+          + `</tbody></table>`;
+      }
+    }
+
+    $("camp-form").onsubmit = async (ev) => {
+      ev.preventDefault();
+      $("error").textContent = "";
+      const count = Number($("camp-count").value);
+      if (!Number.isInteger(count) || count < 1) {
+        $("error").textContent = "인원 N은 1 이상의 정수여야 합니다";
+        return;
+      }
+      const teamSel = $("camp-team").value;
+      const payload = {
+        count,
+        prefix: $("camp-prefix").value,
+        budget: $("camp-budget").value,
+        expires: $("camp-expires").value || todayYmd(),
+        rpm_limit: $("camp-rpm").value,
+        models: checkedModels("camp-models"),
+      };
+      if (teamSel === "__new__") {
+        const name = $("camp-team-name").value.trim();
+        if (!name) {
+          $("error").textContent = "새 학급 이름을 입력하세요";
+          return;
+        }
+        payload.team = name;
+      } else if (teamSel) {
+        payload.team_id = teamSel;
+      }
+      const btn = $("camp-submit");
+      btn.disabled = true;
+      try {
+        const out = await api("/api/keys/camp", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        renderCampResults(out);
+        if (out.results.some((r) => r.key)) refreshKeys();
+      } catch (e) { $("error").textContent = e.message; }
+      finally { btn.disabled = false; }
+    };
 
     function parseBulkRoster() {
       if (!window.Roster) return { students: [], errors: [{ error: "명단 파서를 불러오지 못했습니다" }] };

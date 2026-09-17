@@ -7,6 +7,7 @@ const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
 const { adjustKey, keyDetail } = require("./lib/key-adjust");
 const { resolveIssueModels, simulateChatCompletion } = require("./lib/model-allowlist");
+const { issueCampKeys } = require("./lib/camp-keys");
 
 const PORT = Number(process.env.PORT || 3456);
 const app = express();
@@ -162,10 +163,10 @@ async function litellm(p, method = "GET", body) {
     return { deleted: 1 };
   }
   if (p === "/key/generate") {
-    if (keys.some((k) => k.key_alias === body.key_alias)) {
+    if (keys.some((k) => k.key_alias === body.key_alias || (body.key && k.token === body.key))) {
       throw new Error("alias already exists");
     }
-    const token = "sk-mock-" + body.key_alias;
+    const token = body.key || ("sk-mock-" + body.key_alias);
     const rec = {
       token,
       key: token,
@@ -180,6 +181,7 @@ async function litellm(p, method = "GET", body) {
       rpm_limit: body.rpm_limit,
       tpm_limit: body.tpm_limit,
       blocked: false,
+      metadata: body.metadata || {},
     };
     if (body.duration && /^\d+s$/.test(body.duration)) {
       rec.expires = new Date(Date.now() + Number(body.duration.slice(0, -1)) * 1000).toISOString();
@@ -296,6 +298,13 @@ app.post("/api/keys/bulk", async (req, res) => {
     res.status(e.status || 502).json({ error: e.message });
   }
 });
+app.post("/api/keys/camp", async (req, res) => {
+  try {
+    res.json(await issueCampKeys(req.body, { litellm }));
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
 app.get("/api/keys/info", async (req, res) => {
   try {
     res.json(await keyDetail(req.query.token, { litellm }));
@@ -371,5 +380,5 @@ app.get("/api/analytics", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄 예산·모델 허용 목록·만료 회수·개별 충전 데모)`);
+  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄·캠프 짧은 키·만료 회수 데모)`);
 });
