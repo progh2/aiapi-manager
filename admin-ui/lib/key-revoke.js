@@ -4,7 +4,10 @@
 
 const MAX_REVOKE = 500;
 const DAY_MS = 86400000;
-const FILTERS = new Set(["expired", "expiring", "all", "blocked", "active"]);
+const FILTERS = new Set([
+  "expired", "expiring", "all", "blocked", "active",
+  "camp", "camp_due", "camp_today",
+]);
 
 function parseExpires(key) {
   if (!key || key.expires == null || key.expires === "") return null;
@@ -31,6 +34,36 @@ function keyToken(key) {
   return (key && (key.token || key.key)) || "";
 }
 
+function todayYmd(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function campMeta(key) {
+  return (key && key.metadata && key.metadata.aiapi_camp) || null;
+}
+
+function isCampKey(key) {
+  const m = campMeta(key);
+  return !!(m && (m.kind === "camp" || m.code || m.expires_ymd));
+}
+
+function isCampDue(key, now = new Date()) {
+  if (!isCampKey(key)) return false;
+  if (isExpired(key, now)) return true;
+  const ymd = campMeta(key).expires_ymd;
+  return !!(ymd && ymd < todayYmd(now));
+}
+
+function isCampToday(key, now = new Date()) {
+  if (!isCampKey(key)) return false;
+  const ymd = campMeta(key).expires_ymd;
+  if (ymd) return ymd === todayYmd(now);
+  return !isExpired(key, now);
+}
+
 function matchesFilter(key, filter, opts = {}) {
   const now = opts.now || new Date();
   const teamId = opts.team_id || "";
@@ -49,6 +82,12 @@ function matchesFilter(key, filter, opts = {}) {
       return !!key.blocked;
     case "active":
       return !key.blocked && !isExpired(key, now);
+    case "camp":
+      return isCampKey(key);
+    case "camp_due":
+      return isCampDue(key, now);
+    case "camp_today":
+      return isCampToday(key, now);
     default:
       return false;
   }
@@ -89,7 +128,10 @@ function selectKeysForRevoke(body, keys, now = new Date()) {
 
   const filter = effectiveFilter(body, false);
   if (!FILTERS.has(filter)) {
-    throw httpError("filter는 expired, expiring, all, blocked, active 중 하나여야 합니다", 400);
+    throw httpError(
+      "filter는 expired, expiring, all, blocked, active, camp, camp_due, camp_today 중 하나여야 합니다",
+      400
+    );
   }
   if (filter === "all" && !String(body.team_id || "").trim()) {
     throw httpError("전체 키 일괄 회수는 그룹을 고르거나 만료 필터를 쓰세요", 400);
@@ -191,6 +233,11 @@ const KeyRevoke = {
   parseExpires,
   isExpired,
   isExpiringSoon,
+  todayYmd,
+  campMeta,
+  isCampKey,
+  isCampDue,
+  isCampToday,
   keyToken,
   matchesFilter,
   effectiveFilter,

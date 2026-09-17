@@ -7,7 +7,7 @@ const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
 const { adjustKey, keyDetail } = require("./lib/key-adjust");
 const { resolveIssueModels, teamModelsFor } = require("./lib/model-allowlist");
-const { issueCampKeys } = require("./lib/camp-keys");
+const { issueCampKeys, campIssuePolicy, revokeCampKeys, todayYmd } = require("./lib/camp-keys");
 
 const {
   FIREBASE_PROJECT_ID,
@@ -144,13 +144,35 @@ app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
   }
 });
 
-// 캠프 짧은 키 N개. 명단 없이 인원만. 당일 만료가 기본값.
-// #20 모델 필수·스케줄 회수는 issueCampKeys 의 policy 훅.
+// 캠프 짧은 키 N개. 명단 없이 인원만. 저가 모델 필수·당일 종료 강제.
 app.post("/api/keys/camp", requireAdmin, async (req, res) => {
   try {
     const out = await issueCampKeys(req.body, { litellm });
     const fail = out.results.filter((r) => r.error).length;
-    console.log(`${req.adminEmail} 이(가) 캠프 키 발급: ${out.count}개 (실패 ${fail}) 만료 ${out.expires}`);
+    console.log(`${req.adminEmail} 이(가) 캠프 키 발급: ${out.count}개 (실패 ${fail}) 만료 ${out.expires} 모델 ${(out.models || []).join(",")}`);
+    res.json(out);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+// 캠프 발급 정책(저가 모델·당일 종료·회수 훅). UI가 폼을 잠글 때 쓴다.
+app.get("/api/keys/camp/policy", requireAdmin, async (_req, res) => {
+  const policy = campIssuePolicy();
+  res.json({
+    ...policy,
+    expires: todayYmd(),
+  });
+});
+
+// 캠프 키 당일/만료 회수. 스케줄(cron)과 화면의 수동 훅.
+app.post("/api/keys/camp/revoke", requireAdmin, async (req, res) => {
+  try {
+    const out = await revokeCampKeys(req.body, { litellm });
+    const n = out.results.length;
+    const fail = out.results.filter((r) => r.error).length;
+    const verb = out.action === "delete" ? "회수" : "차단";
+    console.log(`${req.adminEmail} 이(가) 캠프 키 ${verb}: ${n}개 (실패 ${fail}) filter ${out.filter}`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
