@@ -384,6 +384,7 @@ app.post("/api/keys/revoke", async (req, res) => {
 app.get("/api/analytics", (req, res) => {
   const teamId = String(req.query.team_id || "");
   const selectedTeam = teamId ? teams.find((t) => t.team_id === teamId) || null : null;
+  if (teamId && !selectedTeam) return res.status(400).json({ error: "알 수 없는 학급/조입니다" });
   const dates = [];
   const baseDaily = [];
   const now = Date.now();

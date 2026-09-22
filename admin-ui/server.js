@@ -222,6 +222,9 @@ app.get("/api/analytics", requireAdmin, async (req, res) => {
       if (page >= (d.total_pages || 1)) break;
     }
     const teams = await listTeams();
+    if (teamId && !teams.some((t) => t.team_id === teamId)) {
+      return res.status(400).json({ error: "알 수 없는 학급/조입니다" });
+    }
     res.json(buildAnalytics({ results, keyList, teams, start, end, horizon, teamId }));
   } catch (e) {
     res.status(502).json({ error: e.message });
