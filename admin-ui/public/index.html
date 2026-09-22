@@ -135,6 +135,7 @@
           <option value="14" selected>14일 예측</option>
           <option value="30">30일 예측</option>
         </select>
+        <select id="dash-team"><option value="">전체 학급</option></select>
         <button id="refresh-dash" class="small">새로고침</button>
       </div>
 
@@ -686,10 +687,10 @@
               <button class="small" data-ti="${i}" data-act="t-del">삭제</button>
             </td>
           </tr>`).join("") || '<tr><td colspan="7" class="muted">학급 없음</td></tr>';
-        for (const sel of [$("team-select"), $("filter-team"), $("bulk-team"), $("camp-team")]) {
+        for (const sel of [$("team-select"), $("dash-team"), $("filter-team"), $("bulk-team"), $("camp-team")]) {
           if (!sel) continue;
           const cur = sel.value;
-          const empty = sel.id === "filter-team" ? "전체 학급" : "학급 없음";
+          const empty = (sel.id === "filter-team" || sel.id === "dash-team") ? "전체 학급" : "학급 없음";
           const extra = (sel.id === "bulk-team" || sel.id === "camp-team")
             ? `<option value="__new__">+ 새 학급 만들기</option>` : "";
           sel.innerHTML = `<option value="">${empty}</option>` + extra +
@@ -792,7 +793,8 @@
       const avg = a.totalSpend / days;
       const slope = a.forecast?.slope ?? 0;
       const projected = a.forecast?.future?.at(-1) ?? null;
-      const teamBudget = teamCache.reduce((s, t) => s + (t.max_budget || 0), 0);
+      const teamBudget = a.budget?.total ?? null;
+      const budgetScope = a.budget?.team ? `${a.budget.team} 예산` : "예산 합계";
       // 그룹 예산 총합이 있으면 소진 예상일을 계산 (하루 증가액 기준)
       let exhaust = null;
       if (teamBudget > 0 && slope > 0) {
@@ -809,7 +811,7 @@
         cards.push({
           k: "학급/조 예산 소진 예상",
           v: exhaust === null ? "-" : exhaust === 0 ? "이미 초과" : `약 ${exhaust}일 후`,
-          s: `예산 합계 ${money(teamBudget)} 중 ${money(a.totalSpend)} 사용`,
+          s: `${budgetScope} ${money(teamBudget)} 중 ${money(a.totalSpend)} 사용`,
         });
       }
       $("stat-cards").innerHTML = cards.map((c) =>
@@ -820,16 +822,17 @@
       if (!window.CHARTS) return;
       const days = Number($("range-days").value);
       const horizon = Number($("horizon-days").value);
+      const teamId = $("dash-team").value;
       try {
-        const a = await api(`/api/analytics?days=${days}&horizon=${horizon}`);
+        const a = await api(`/api/analytics?days=${days}&horizon=${horizon}${teamId ? `&team_id=${encodeURIComponent(teamId)}` : ""}`);
         statCards(a, days, horizon);
-        const teamBudget = teamCache.reduce((s, t) => s + (t.max_budget || 0), 0);
+        const teamBudget = a.budget?.total ?? null;
         const cum = CHARTS.cumulativeChart($("chart-cumulative"), a.dates, a.cumulative, a.futureDates, a.forecast, teamBudget || null);
         $("fc-cap").textContent = (a.forecast
           ? `최근 ${days}일의 누적 지출에 직선을 맞춰 ${horizon}일 뒤를 추정한 값입니다. 사용 패턴이 바뀌면 달라집니다.`
           : "예측하려면 최소 3일치 사용 기록이 필요합니다.")
           + (teamBudget && !cum.budgetShown
-            ? ` 학급/조 예산 합계 ${money(teamBudget)}는 현재 지출보다 훨씬 커서 그래프에 표시하지 않았습니다.` : "");
+            ? ` ${a.budget?.team || "학급/조 예산 합계"} ${money(teamBudget)}는 현재 지출보다 훨씬 커서 그래프에 표시하지 않았습니다.` : "");
         CHARTS.dailyBarChart($("chart-daily"), a.dates, a.daily);
         CHARTS.rankBarChart($("chart-students"), a.keyStats, { labelKey: "alias", subKey: "team" });
         CHARTS.rankBarChart($("chart-teams"), a.teamStats, { labelKey: "name" });
@@ -842,6 +845,7 @@
     }
     $("range-days").onchange = refreshDashboard;
     $("horizon-days").onchange = refreshDashboard;
+    $("dash-team").onchange = refreshDashboard;
     $("refresh-dash").onclick = refreshDashboard;
     window.addEventListener("charts-ready", () => { if (auth.currentUser) refreshDashboard(); });
     let resizeT;

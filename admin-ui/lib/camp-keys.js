@@ -280,13 +280,13 @@ async function issueCampKeys(body, { litellm, now } = {}) {
       ...body,
       expires,
       budget: body.budget === undefined || body.budget === "" ? DEFAULT_BUDGET : body.budget,
-    });
+    }, when);
   } catch (e) {
     if (!e.status) e.status = 400;
     throw e;
   }
   try {
-    // keyGenerateParams 는 프로세스 시각을 쓰므로, 캠프는 주입된 now 로 다시 계산한다.
+    // keyGenerateParams 가 now 를 받더라도, expires 강제 후 duration 재계산을 한 번 더 명시한다.
     params.duration = durationFromExpiryDate(expires, when);
   } catch (e) {
     if (!e.status) e.status = 400;
