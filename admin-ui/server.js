@@ -76,6 +76,19 @@ async function litellm(path, method = "GET", body) {
   return data;
 }
 
+async function listTeams() {
+  const teams = [];
+  for (let page = 1; ; page++) {
+    const path = page === 1 ? "/team/list" : `/team/list?page=${page}`;
+    const data = await litellm(path);
+    const batch = Array.isArray(data) ? data : data.teams || [];
+    teams.push(...batch);
+    const total = data?.metadata?.total_pages || data?.total_pages || 1;
+    if (page >= total || !batch.length || Array.isArray(data)) break;
+  }
+  return teams;
+}
+
 // 발급/수정 공통: 클라이언트 입력에서 LiteLLM 키 파라미터만 추려 만든다.
 // expires(YYYY-MM-DD)가 있으면 LiteLLM이 받는 duration(초)으로 바꾼다.
 function keyParams(body) {
@@ -87,8 +100,7 @@ function keyParams(body) {
 
 app.get("/api/teams", requireAdmin, async (req, res) => {
   try {
-    const data = await litellm("/team/list");
-    res.json({ teams: Array.isArray(data) ? data : data.teams || [] });
+    res.json({ teams: await listTeams() });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
@@ -209,8 +221,7 @@ app.get("/api/analytics", requireAdmin, async (req, res) => {
       keyList.push(...(d.keys || []));
       if (page >= (d.total_pages || 1)) break;
     }
-    const teamsRaw = await litellm("/team/list");
-    const teams = Array.isArray(teamsRaw) ? teamsRaw : teamsRaw.teams || [];
+    const teams = await listTeams();
     res.json(buildAnalytics({ results, keyList, teams, start, end, horizon, teamId }));
   } catch (e) {
     res.status(502).json({ error: e.message });

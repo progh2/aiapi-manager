@@ -44,6 +44,9 @@ function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId =
 
   for (const r of results) {
     const cur = byDate.get(r.date) || { spend: 0, requests: 0, tokens: 0 };
+    for (const [m, v] of Object.entries(r.breakdown?.models || {})) {
+      perModel.set(m, (perModel.get(m) || 0) + (v.metrics?.spend || 0));
+    }
     if (allowedTokens) {
       for (const [hash, v] of Object.entries(r.breakdown?.api_keys || {})) {
         if (!allowedTokens.has(hash)) continue;
@@ -55,9 +58,6 @@ function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId =
       cur.spend += r.metrics?.spend || 0;
       cur.requests += r.metrics?.api_requests || 0;
       cur.tokens += r.metrics?.total_tokens || 0;
-      for (const [m, v] of Object.entries(r.breakdown?.models || {})) {
-        perModel.set(m, (perModel.get(m) || 0) + (v.metrics?.spend || 0));
-      }
     }
     byDate.set(r.date, cur);
 
