@@ -381,18 +381,25 @@ app.post("/api/keys/revoke", async (req, res) => {
     res.status(e.status || 502).json({ error: e.message });
   }
 });
-app.get("/api/analytics", (_req, res) => {
+app.get("/api/analytics", (req, res) => {
+  const teamId = String(req.query.team_id || "");
+  const selectedTeam = teamId ? teams.find((t) => t.team_id === teamId) || null : null;
   const dates = [];
-  const daily = [];
+  const baseDaily = [];
   const now = Date.now();
   for (let i = 13; i >= 0; i--) {
     dates.push(new Date(now - i * 86400000).toISOString().slice(0, 10));
-    daily.push(Number((0.15 + (13 - i) * 0.04).toFixed(3)));
+    baseDaily.push(Number((0.15 + (13 - i) * 0.04).toFixed(3)));
   }
+  const allSpend = keys.reduce((sum, k) => sum + (k.spend || 0), 0);
+  const scopedKeys = teamId ? keys.filter((k) => k.team_id === teamId) : keys;
+  const scopedSpend = scopedKeys.reduce((sum, k) => sum + (k.spend || 0), 0);
+  const ratio = teamId && allSpend > 0 ? scopedSpend / allSpend : 1;
+  const daily = baseDaily.map((v) => Number((v * ratio).toFixed(3)));
   const cumulative = [];
   daily.reduce((sum, v, i) => { cumulative[i] = Number((sum + v).toFixed(3)); return cumulative[i]; }, 0);
   const teamName = (id) => teams.find((t) => t.team_id === id)?.team_alias || null;
-  const keyStats = keys
+  const keyStats = scopedKeys
     .filter((k) => k.spend > 0)
     .map((k) => ({
       alias: k.key_alias,
@@ -407,14 +414,31 @@ app.get("/api/analytics", (_req, res) => {
   const perTeam = new Map();
   for (const k of keyStats) {
     const name = k.team || "학급 없음";
-    perTeam.set(name, Number(((perTeam.get(name) || 0) + k.spend).toFixed(3)));
+    const cur = perTeam.get(name) || { name, spend: 0, budget: null, max_budget: null, remaining: null };
+    cur.spend = Number((cur.spend + k.spend).toFixed(3));
+    if (k.team) {
+      const team = teams.find((t) => (t.team_alias || t.team_id.slice(0, 8)) === k.team);
+      const budget = team?.max_budget ?? null;
+      cur.budget = budget;
+      cur.max_budget = budget;
+      cur.remaining = budget == null ? null : Number((budget - cur.spend).toFixed(3));
+    }
+    perTeam.set(name, cur);
   }
-  const teamStats = [...perTeam.entries()].map(([name, spend]) => ({ name, spend }));
+  const budgetTotal = teamId
+    ? (selectedTeam?.max_budget ?? null)
+    : teams.reduce((sum, t) => sum + (t.max_budget || 0), 0);
   res.json({
     dates, daily, requests: daily.slice(), cumulative,
-    futureDates: [], forecast: null, keyStats, teamStats,
-    modelStats: [{ model: "gpt-4o-mini", spend: cumulative.at(-1) || 0 }],
+    futureDates: [], forecast: null, keyStats, teamStats: [...perTeam.values()],
+    modelStats: [{ name: "gpt-4o-mini", spend: cumulative.at(-1) || 0 }],
     totalSpend: cumulative.at(-1) || 0,
+    budget: {
+      total: budgetTotal,
+      remaining: budgetTotal == null ? null : Number((budgetTotal - (cumulative.at(-1) || 0)).toFixed(3)),
+      team_id: selectedTeam?.team_id || null,
+      team: selectedTeam?.team_alias || null,
+    },
   });
 });
 

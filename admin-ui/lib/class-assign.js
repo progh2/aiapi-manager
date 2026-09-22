@@ -12,12 +12,12 @@ const {
 
 const MAX_BULK = 500;
 
-function keyGenerateParams(body) {
+function keyGenerateParams(body, now) {
   const p = {};
   if (body.budget !== undefined && body.budget !== "") p.max_budget = Number(body.budget);
   if (body.budget_duration) p.budget_duration = body.budget_duration;
   if (body.expires) {
-    p.duration = durationFromExpiryDate(body.expires);
+    p.duration = durationFromExpiryDate(body.expires, now);
   } else if (body.duration) {
     p.duration = body.duration;
   }

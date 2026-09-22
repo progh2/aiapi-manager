@@ -8,6 +8,7 @@ const { revokeKeys } = require("./lib/key-revoke");
 const { adjustKey, keyDetail } = require("./lib/key-adjust");
 const { resolveIssueModels, teamModelsFor } = require("./lib/model-allowlist");
 const { issueCampKeys, campIssuePolicy, revokeCampKeys, todayYmd } = require("./lib/camp-keys");
+const { DAY_MS, ymd, buildAnalytics } = require("./lib/analytics");
 
 const {
   FIREBASE_PROJECT_ID,
@@ -183,40 +184,10 @@ app.post("/api/keys/camp/revoke", requireAdmin, async (req, res) => {
 // 일별 지출 시계열 + 키/모델별 집계. LiteLLM의 /user/daily/activity는
 // 오픈소스에서 쓸 수 있는 집계 엔드포인트다(/global/spend/report는 엔터프라이즈 전용).
 
-const DAY_MS = 86400000;
-const ymd = (d) => d.toISOString().slice(0, 10);
-
-// 잔여 예산. max_budget이 없으면 숫자를 만들지 않고 null.
-function remainingBudget(maxBudget, spend) {
-  if (maxBudget == null) return null;
-  const budget = Number(maxBudget);
-  if (!Number.isFinite(budget)) return null;
-  return budget - (Number(spend) || 0);
-}
-
-// 최소제곱 직선회귀로 향후 지출을 예측한다.
-// 반환: 하루 평균 증가액(slope)과 n일 뒤 누적 예측값.
-function forecast(dailySeries, horizonDays) {
-  const pts = dailySeries.map((v, i) => [i, v]).filter(([, v]) => v !== null);
-  if (pts.length < 3) return null;
-  const n = pts.length;
-  const sx = pts.reduce((a, [x]) => a + x, 0);
-  const sy = pts.reduce((a, [, y]) => a + y, 0);
-  const sxx = pts.reduce((a, [x]) => a + x * x, 0);
-  const sxy = pts.reduce((a, [x, y]) => a + x * y, 0);
-  const denom = n * sxx - sx * sx;
-  if (!denom) return null;
-  const slope = (n * sxy - sx * sy) / denom;
-  const intercept = (sy - slope * sx) / n;
-  const at = (x) => Math.max(0, intercept + slope * x);
-  const future = Array.from({ length: horizonDays }, (_, k) => at(n - 1 + k + 1));
-  // 관측 구간의 추세선(첫점~끝점)도 함께 넘겨 그래프에서 이어 그린다
-  return { slope, fitStart: at(0), fitEnd: at(n - 1), future };
-}
-
 app.get("/api/analytics", requireAdmin, async (req, res) => {
   const days = Math.min(180, Math.max(7, Number(req.query.days) || 30));
   const horizon = Math.min(90, Math.max(1, Number(req.query.horizon) || 14));
+  const teamId = String(req.query.team_id || "");
   const end = new Date();
   const start = new Date(end.getTime() - (days - 1) * DAY_MS);
   try {
@@ -231,45 +202,6 @@ app.get("/api/analytics", requireAdmin, async (req, res) => {
       if (page >= total) break;
     }
 
-    // 날짜 축을 빈 날 포함해 채운다
-    const byDate = new Map();
-    for (const r of results) {
-      const cur = byDate.get(r.date) || { spend: 0, requests: 0, tokens: 0 };
-      cur.spend += r.metrics?.spend || 0;
-      cur.requests += r.metrics?.api_requests || 0;
-      cur.tokens += r.metrics?.total_tokens || 0;
-      byDate.set(r.date, cur);
-    }
-    const dates = [];
-    const daily = [];
-    for (let t = start.getTime(); t <= end.getTime(); t += DAY_MS) {
-      const key = ymd(new Date(t));
-      const v = byDate.get(key) || { spend: 0, requests: 0, tokens: 0 };
-      dates.push(key);
-      daily.push(v);
-    }
-
-    // 누적 시계열과 예측
-    let running = 0;
-    const cumulative = daily.map((d) => (running += d.spend));
-    const fc = forecast(cumulative, horizon);
-    const futureDates = Array.from({ length: horizon }, (_, k) => ymd(new Date(end.getTime() + (k + 1) * DAY_MS)));
-
-    // 키별·모델별 집계 (breakdown에서 합산)
-    const perKey = new Map();
-    const perModel = new Map();
-    for (const r of results) {
-      for (const [hash, v] of Object.entries(r.breakdown?.api_keys || {})) {
-        const cur = perKey.get(hash) || { spend: 0, requests: 0 };
-        cur.spend += v.metrics?.spend || 0;
-        cur.requests += v.metrics?.api_requests || 0;
-        perKey.set(hash, cur);
-      }
-      for (const [m, v] of Object.entries(r.breakdown?.models || {})) {
-        perModel.set(m, (perModel.get(m) || 0) + (v.metrics?.spend || 0));
-      }
-    }
-
     // 키 해시 → 별칭/그룹 이름으로 치환
     const keyList = [];
     for (let page = 1; ; page++) {
@@ -279,50 +211,7 @@ app.get("/api/analytics", requireAdmin, async (req, res) => {
     }
     const teamsRaw = await litellm("/team/list");
     const teams = Array.isArray(teamsRaw) ? teamsRaw : teamsRaw.teams || [];
-    const teamName = new Map(teams.map((t) => [t.team_id, t.team_alias || t.team_id.slice(0, 8)]));
-    const meta = new Map(keyList.map((k) => [k.token, {
-      alias: k.key_alias || k.token.slice(0, 8),
-      team: k.team_id ? teamName.get(k.team_id) || "(삭제된 그룹)" : null,
-      budget: k.max_budget ?? null,
-    }]));
-
-    // 지출이 0인 항목은 그래프를 어지럽히기만 하므로 제외한다
-    // (삭제된 키의 잔여 기록, 호출만 실패한 키 등)
-    const keyStats = [...perKey.entries()].map(([hash, v]) => {
-      const m = meta.get(hash);
-      const budget = m?.budget ?? null;
-      return {
-        alias: m?.alias || hash.slice(0, 8),
-        team: m?.team || null,
-        budget,
-        max_budget: budget,
-        remaining: remainingBudget(budget, v.spend),
-        deleted: !m,
-        ...v,
-      };
-    }).filter((k) => k.spend > 0).sort((a, b) => b.spend - a.spend);
-
-    // 그룹별 합계
-    const perTeam = new Map();
-    for (const k of keyStats) {
-      const name = k.team || "학급 없음";
-      perTeam.set(name, (perTeam.get(name) || 0) + k.spend);
-    }
-
-    res.json({
-      dates,
-      daily: daily.map((d) => d.spend),
-      requests: daily.map((d) => d.requests),
-      cumulative,
-      futureDates,
-      forecast: fc,
-      keyStats,
-      teamStats: [...perTeam.entries()].map(([name, spend]) => ({ name, spend }))
-        .filter((t) => t.spend > 0).sort((a, b) => b.spend - a.spend),
-      modelStats: [...perModel.entries()].map(([name, spend]) => ({ name, spend }))
-        .filter((m) => m.spend > 0).sort((a, b) => b.spend - a.spend),
-      totalSpend: cumulative.at(-1) || 0,
-    });
+    res.json(buildAnalytics({ results, keyList, teams, start, end, horizon, teamId }));
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
