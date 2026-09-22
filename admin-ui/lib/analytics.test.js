@@ -96,6 +96,6 @@ describe("buildAnalytics", () => {
     assert.equal(out.budget.team, "1반");
     assert.equal(out.budget.total, 10);
     assert.equal(out.budget.remaining, 2);
-    assert.deepEqual(out.modelStats, [{ name: "gpt-4o-mini", spend: 17 }]);
+    assert.deepEqual(out.modelStats, [{ name: "gpt-4o-mini", spend: 8 }]);
   });
 });

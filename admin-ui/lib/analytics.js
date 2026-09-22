@@ -44,20 +44,35 @@ function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId =
 
   for (const r of results) {
     const cur = byDate.get(r.date) || { spend: 0, requests: 0, tokens: 0 };
-    for (const [m, v] of Object.entries(r.breakdown?.models || {})) {
-      perModel.set(m, (perModel.get(m) || 0) + (v.metrics?.spend || 0));
-    }
     if (allowedTokens) {
+      const exactModels = new Map();
       for (const [hash, v] of Object.entries(r.breakdown?.api_keys || {})) {
         if (!allowedTokens.has(hash)) continue;
         cur.spend += v.metrics?.spend || 0;
         cur.requests += v.metrics?.api_requests || 0;
         cur.tokens += v.metrics?.total_tokens || 0;
+        for (const [m, mv] of Object.entries(v.breakdown?.models || v.models || {})) {
+          exactModels.set(m, (exactModels.get(m) || 0) + (mv.metrics?.spend || 0));
+        }
+      }
+      if (exactModels.size) {
+        for (const [m, spend] of exactModels.entries()) {
+          perModel.set(m, (perModel.get(m) || 0) + spend);
+        }
+      } else {
+        const totalSpend = Number(r.metrics?.spend) || 0;
+        const ratio = totalSpend > 0 ? cur.spend / totalSpend : 0;
+        for (const [m, v] of Object.entries(r.breakdown?.models || {})) {
+          perModel.set(m, (perModel.get(m) || 0) + ((v.metrics?.spend || 0) * ratio));
+        }
       }
     } else {
       cur.spend += r.metrics?.spend || 0;
       cur.requests += r.metrics?.api_requests || 0;
       cur.tokens += r.metrics?.total_tokens || 0;
+      for (const [m, v] of Object.entries(r.breakdown?.models || {})) {
+        perModel.set(m, (perModel.get(m) || 0) + (v.metrics?.spend || 0));
+      }
     }
     byDate.set(r.date, cur);
 
