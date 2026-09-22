@@ -9,6 +9,7 @@ services:
       - ./litellm/config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     environment:
+      TZ: ${TZ:-Asia/Seoul}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@db:5432/litellm
@@ -39,10 +40,16 @@ services:
     ports:
       - "${ADMIN_UI_PORT:-3000}:3000"
     environment:
+      TZ: ${TZ:-Asia/Seoul}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      FIREBASE_API_KEY: ${FIREBASE_API_KEY}
+      FIREBASE_AUTH_DOMAIN: ${FIREBASE_AUTH_DOMAIN:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_BASE_URL: http://litellm:4000
+      USERS_DATA_PATH: /app/data/users.json
+    volumes:
+      - ./admin-ui/data:/app/data
     depends_on:
       litellm:
         condition: service_healthy
@@ -68,6 +75,7 @@ services:
     restart: unless-stopped
     # 외부 포트를 열지 않음 — litellm 컨테이너에서만 내부 네트워크로 접근
     environment:
+      TZ: ${TZ:-Asia/Seoul}
       POSTGRES_USER: litellm
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: litellm

@@ -7,6 +7,7 @@ function mockLiteLLM({ generate, teams = [], createdTeamId = "team-new" } = {}) 
   async function litellm(path, method, body) {
     calls.push({ path, method, body });
     if (path === "/team/list") return { teams };
+    if (path.startsWith("/key/list")) return { keys: [], total_pages: 1 };
     if (path === "/team/new") return { team_id: createdTeamId };
     if (path === "/key/generate") {
       if (generate) return generate(body);

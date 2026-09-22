@@ -72,6 +72,25 @@ def duration_from_expiry(date_str: str) -> str:
     return f"{seconds}s"
 
 
+def existing_aliases(base_url: str, master_key: str) -> set[str]:
+    """이미 발급된 key_alias. 조회에 실패하면 예외를 올려 발급을 시작하지 않는다."""
+    found: set[str] = set()
+    page = 1
+    while page <= 100:
+        listing = api(base_url, master_key,
+                      f"/key/list?return_full_object=true&size=100&page={page}")
+        if not isinstance(listing, dict):
+            break
+        for key in listing.get("keys") or []:
+            alias = key.get("key_alias") if isinstance(key, dict) else None
+            if alias:
+                found.add(alias)
+        if page >= (listing.get("total_pages") or 1):
+            break
+        page += 1
+    return found
+
+
 def load_students(path: str) -> list[dict]:
     """name,student_id / 학번,이름 / 헤더 없는 붙여넣기를 학생 dict로 바꾼다."""
     with open(path, newline="", encoding="utf-8-sig") as f:
@@ -169,6 +188,11 @@ def main() -> None:
         except Exception as e:
             sys.exit(str(e))
 
+    try:
+        aliases = existing_aliases(args.base_url, args.master_key)
+    except Exception as e:
+        sys.exit(f"기존 키 조회 실패: {e}")
+
     team_id = None
     if args.team:
         try:
@@ -184,13 +208,17 @@ def main() -> None:
         for s in students:
             alias = f"{s['student_id']}-{s['name']}" if s["student_id"] and s["name"] else (
                 s["student_id"] or s["name"])
+            if alias in aliases:
+                fail += 1
+                print(f"건너뜀: {alias} (이미 있음)", file=sys.stderr)
+                continue
             try:
                 resp = api(args.base_url, args.master_key, "/key/generate", {
                     "key_alias": alias,
                     "max_budget": args.budget,
                     "budget_duration": args.budget_duration,
                     "duration": duration,
-                    "models": args.models or [],
+                    "models": args.models or ["gpt-4o-mini"],
                     "rpm_limit": args.rpm,
                     "tpm_limit": args.tpm,
                     "team_id": team_id,
@@ -200,6 +228,7 @@ def main() -> None:
                 print(f"실패: {alias}: {e}", file=sys.stderr)
                 continue
             ok += 1
+            aliases.add(alias)
             writer.writerow([s["name"], s["student_id"], resp["key"]])
             print(f"발급: {alias}")
 

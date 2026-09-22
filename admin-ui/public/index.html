@@ -113,9 +113,35 @@
   <h1>AI API Manager <span class="muted">— 수업용 키 관리</span></h1>
 
   <div id="login-view">
-    <p>관리자 계정으로 로그인하세요.</p>
+    <img src="/mascot/elf-welcome.png" alt="엘피" width="96" height="96">
+    <p>등록된 구글 계정으로 로그인하세요.</p>
     <button class="primary" id="login-btn">Google로 로그인</button>
     <div id="login-error"></div>
+  </div>
+
+  <div id="user-view" style="display:none">
+    <p><span id="user-who" class="muted"></span> <button id="user-logout-btn" class="small">로그아웃</button></p>
+    <h2 id="user-greeting">환영합니다</h2>
+    <p class="muted">할당받은 키와 사용량만 보입니다. 키 문자열은 표시하지 않습니다.</p>
+    <div class="toolbar">
+      <select id="user-range-days">
+        <option value="14">최근 14일</option>
+        <option value="30" selected>최근 30일</option>
+        <option value="60">최근 60일</option>
+      </select>
+      <select id="user-horizon-days">
+        <option value="7">7일 예측</option>
+        <option value="14" selected>14일 예측</option>
+      </select>
+      <button id="user-refresh-dash" class="small" type="button">새로고침</button>
+    </div>
+    <div class="cards" id="user-stat-cards"></div>
+    <div id="user-chart-daily"></div>
+    <div id="user-chart-keys"></div>
+    <table>
+      <thead><tr><th>별칭</th><th>학급/조</th><th>지출 / 예산</th><th>리셋</th><th>만료</th><th>모델</th></tr></thead>
+      <tbody id="user-key-rows"></tbody>
+    </table>
   </div>
 
   <div id="app-view" style="display:none">
@@ -171,6 +197,26 @@
         </div>
       </div>
     </div>
+
+    <fieldset>
+      <legend>사용자 등록</legend>
+      <p class="muted" style="margin:.2rem 0 .6rem; font-size:.82rem">
+        구글 계정으로 들어올 교사·학생을 등록하고 키 별칭을 연결합니다. 관리자 계정은 <code>ADMIN_EMAILS</code>입니다.</p>
+      <form id="user-form" class="form-grid">
+        <label>구글 이메일 *
+          <input id="u-email" type="email" placeholder="student@school.edu" required>
+        </label>
+        <label>이름
+          <input id="u-name" placeholder="홍길동">
+        </label>
+        <label>&nbsp;<button class="primary" type="submit">사용자 추가</button></label>
+      </form>
+      <div id="u-key-aliases" class="model-boxes"></div>
+      <table>
+        <thead><tr><th>이름</th><th>이메일</th><th>할당 키</th><th></th></tr></thead>
+        <tbody id="user-rows"></tbody>
+      </table>
+    </fieldset>
 
     <fieldset>
       <legend>학급/조 관리</legend>
@@ -431,6 +477,9 @@
         <label>예산 (USD)
           <input id="e-budget" type="number" step="0.5" min="0">
         </label>
+        <label id="e-team-wrap">소속 학급/조
+          <select id="e-team"><option value="">학급 없음</option></select>
+        </label>
         <label>예산 리셋 주기
           <select id="e-budget-duration">
             <option value="">없음 (총액 한도)</option>
@@ -569,13 +618,14 @@
       return data;
     }
 
-    function modelCheckboxes(container, prefix, checked = []) {
+    function modelCheckboxes(container, prefix, checked) {
       if (prefix === "camp-models") {
         campModelCheckboxes(container, checked);
         return;
       }
+      const selected = checked == null ? availableModels.filter((m) => m === "gpt-4o-mini") : checked;
       container.innerHTML = availableModels.map((m) =>
-        `<label><input type="checkbox" name="${prefix}" value="${m}" ${checked.includes(m) ? "checked" : ""}> ${m}</label>`
+        `<label><input type="checkbox" name="${esc(prefix)}" value="${esc(m)}" ${selected.includes(m) ? "checked" : ""}> ${esc(m)}</label>`
       ).join("") || '<span class="muted">모델 없음</span>';
     }
 
@@ -676,7 +726,7 @@
         const keyCount = (t) => keyCache.filter((k) => k.team_id === t.team_id).length;
         $("team-rows").innerHTML = teamCache.map((t, i) => `
           <tr>
-            <td>${t.team_alias || t.team_id.slice(0, 8)}</td>
+            <td>${esc(t.team_alias || t.team_id.slice(0, 8))}</td>
             <td>${gauge(t.spend, t.max_budget)}</td>
             <td>${DUR_LABEL[t.budget_duration] || '<span class="muted">없음</span>'}</td>
             <td>${formatModels(t.models)}</td>
@@ -694,7 +744,7 @@
           const extra = (sel.id === "bulk-team" || sel.id === "camp-team")
             ? `<option value="__new__">+ 새 학급 만들기</option>` : "";
           sel.innerHTML = `<option value="">${empty}</option>` + extra +
-            teamCache.map((t) => `<option value="${t.team_id}">${t.team_alias || t.team_id.slice(0, 8)}</option>`).join("");
+            teamCache.map((t) => `<option value="${esc(t.team_id)}">${esc(t.team_alias || t.team_id.slice(0, 8))}</option>`).join("");
           sel.value = cur;
         }
         toggleBulkTeamName();
@@ -756,6 +806,7 @@
             <td style="white-space:nowrap">
               <button class="small" data-i="${i}" data-act="detail">상세</button>
               <button class="small" data-i="${i}" data-act="edit">수정</button>
+              <button class="small" data-i="${i}" data-act="rotate">재발급</button>
               <button class="small" data-i="${i}" data-act="block">${k.blocked ? "해제" : "차단"}</button>
               <button class="small" data-i="${i}" data-act="del">삭제</button>
             </td>
@@ -807,7 +858,16 @@
         { k: `${horizon}일 뒤 누적 예측`, v: projected == null ? "-" : money(projected),
           s: projected == null ? "데이터 부족" : `현재 대비 +${money(projected - a.totalSpend)}` },
       ];
-      if (teamBudget > 0) {
+      const soon = a.soonestTeam;
+      if (soon) {
+        const when = soon.daysLeft === 0 ? "이미 초과"
+          : soon.daysLeft == null ? "최근 사용 없음" : `약 ${soon.daysLeft}일 후`;
+        cards.push({
+          k: "가장 빨리 소진되는 학급",
+          v: esc(soon.name),
+          s: `${when} · 잔여 ${money(Math.max(0, soon.left))} / ${money(soon.budget)}`,
+        });
+      } else if (teamBudget > 0) {
         cards.push({
           k: "학급/조 예산 소진 예상",
           v: exhaust === null ? "-" : exhaust === 0 ? "이미 초과" : `약 ${exhaust}일 후`,
@@ -864,24 +924,101 @@
       });
     $("logout-btn").onclick = () => auth.signOut();
 
+    let userCache = [];
+    async function refreshUserList() {
+      const box = $("u-key-aliases");
+      if (!box) return;
+      userCache = (await api("/api/users")).users || [];
+      const aliases = keyCache.map((k) => k.key_alias).filter(Boolean);
+      $("user-rows").innerHTML = userCache.map((u, i) => `
+        <tr>
+          <td>${esc(u.name)}</td>
+          <td>${esc(u.email)}</td>
+          <td>${(u.key_aliases || []).map((a) => esc(a)).join(", ") || '<span class="muted">없음</span>'}</td>
+          <td><button class="small" type="button" data-ui="${i}" data-act="u-del">삭제</button></td>
+        </tr>`).join("") || '<tr><td colspan="4" class="muted">등록된 사용자 없음</td></tr>';
+      box.innerHTML = aliases.map((a) =>
+        `<label><input type="checkbox" name="u-keys" value="${esc(a)}"> ${esc(a)}</label>`
+      ).join("") || '<span class="muted">발급된 키가 없습니다</span>';
+    }
+    async function refreshUserKeys() {
+      const { keys } = await api("/api/my/keys");
+      $("user-key-rows").innerHTML = (keys || []).map((k) => `
+        <tr>
+          <td>${esc(k.key_alias || "(없음)")}</td>
+          <td>${k.team_alias ? esc(k.team_alias) : '<span class="muted">-</span>'}</td>
+          <td>${gauge(k.spend, k.max_budget)}</td>
+          <td>${DUR_LABEL[k.budget_duration] || '<span class="muted">없음</span>'}</td>
+          <td>${expiryCell(k)}</td>
+          <td>${(k.models || []).map(esc).join(", ") || '<span class="muted">전체</span>'}</td>
+        </tr>`).join("") || '<tr><td colspan="6" class="muted">할당된 키가 없습니다.</td></tr>';
+    }
+    async function refreshUserDashboard() {
+      if (!window.CHARTS) return;
+      const days = Number($("user-range-days").value || 30);
+      const horizon = Number($("user-horizon-days").value || 14);
+      const a = await api(`/api/my/analytics?days=${days}&horizon=${horizon}`);
+      $("user-stat-cards").innerHTML = [
+        { k: `기간 사용 (${days}일)`, v: money(a.totalSpend || 0) },
+        { k: "할당된 키", v: String(a.assignedCount || 0) },
+        { k: `${horizon}일 뒤 예측`, v: a.forecast?.future?.at(-1) == null ? "-" : money(a.forecast.future.at(-1)) },
+      ].map((c) => `<div class="card"><div class="k">${c.k}</div><div class="v">${esc(c.v)}</div></div>`).join("");
+      CHARTS.dailyBarChart($("user-chart-daily"), a.dates, a.daily);
+      if (a.keyStats.length) CHARTS.rankBarChart($("user-chart-keys"), a.keyStats, { labelKey: "alias" });
+      else $("user-chart-keys").innerHTML = '<p class="muted">아직 사용 기록이 없습니다.</p>';
+    }
+    $("user-range-days").onchange = () => refreshUserDashboard().catch((e) => { $("login-error").textContent = e.message; });
+    $("user-horizon-days").onchange = () => refreshUserDashboard().catch((e) => { $("login-error").textContent = e.message; });
+    $("user-refresh-dash").onclick = () => refreshUserDashboard().catch((e) => { $("login-error").textContent = e.message; });
+    $("user-logout-btn").onclick = () => auth.signOut();
+    $("user-form").onsubmit = async (ev) => {
+      ev.preventDefault();
+      const key_aliases = [...document.querySelectorAll('input[name="u-keys"]:checked')].map((c) => c.value);
+      try {
+        await api("/api/users", {
+          method: "POST",
+          body: JSON.stringify({
+            email: $("u-email").value.trim(),
+            name: $("u-name").value.trim(),
+            key_aliases,
+          }),
+        });
+        $("u-email").value = "";
+        $("u-name").value = "";
+        await refreshUserList();
+      } catch (e) { $("error").textContent = e.message; }
+    };
+
+    function showRole(role) {
+      $("login-view").style.display = role ? "none" : "";
+      $("app-view").style.display = role === "admin" ? "" : "none";
+      $("user-view").style.display = role === "user" ? "" : "none";
+    }
+
     auth.onAuthStateChanged((user) => {
-      $("login-view").style.display = user ? "none" : "";
-      $("app-view").style.display = user ? "" : "none";
-      if (!user) return;
+      if (!user) { showRole(null); return; }
       $("who").textContent = user.email;
+      $("user-who").textContent = user.email;
       $("login-error").textContent = "";
-      // 먼저 권한을 확인한다. ADMIN_EMAILS에 없는 계정이면 로그인 화면으로 되돌리고 이유를 보여준다.
-      api("/api/models").then(
-        () => loadModels().then(refreshKeys).then(refreshDashboard),
-        (e) => {
-          $("login-view").style.display = "";
-          $("app-view").style.display = "none";
-          $("login-error").textContent = e.status === 403
-            ? e.message + " — .env의 ADMIN_EMAILS에 이 계정을 추가한 뒤 컨테이너를 다시 시작하세요."
-            : "서버 연결 실패: " + e.message;
-          if (e.status === 403) auth.signOut();
+      api("/api/me").then(async (me) => {
+        showRole(me.role);
+        if (me.role === "admin") {
+          await loadModels();
+          await refreshKeys();
+          await refreshUserList();
+          await refreshDashboard();
+        } else {
+          $("user-greeting").textContent = `${me.name}님, 환영합니다!`;
+          await refreshUserKeys();
+          await refreshUserDashboard();
         }
-      );
+      }, (e) => {
+        showRole(null);
+        $("login-error").textContent = e.status === 403
+          ? e.message
+          : "서버 연결 실패: " + e.message;
+        if (e.status === 403 || e.status === 503) auth.signOut();
+      });
     });
 
     // ---- 그룹 생성/수정/삭제 ----
@@ -1519,7 +1656,14 @@
       $("e-rpm").value = obj.rpm_limit ?? "";
       $("e-tpm").value = obj.tpm_limit ?? "";
       $("e-duration-wrap").style.display = kind === "key" ? "" : "none";
+      $("e-team-wrap").style.display = kind === "key" ? "" : "none";
       $("e-models-wrap").style.display = "";
+      if (kind === "key") {
+        const sel = $("e-team");
+        sel.innerHTML = `<option value="">학급 없음</option>` +
+          teamCache.map((t) => `<option value="${esc(t.team_id)}">${esc(t.team_alias || t.team_id.slice(0, 8))}</option>`).join("");
+        sel.value = obj.team_id || "";
+      }
       modelCheckboxes($("e-model-boxes"), "e-models", obj.models || []);
       $("edit-dlg").showModal();
     }
@@ -1537,7 +1681,13 @@
         if (editKind === "key") {
           await api("/api/keys/update", {
             method: "POST",
-            body: JSON.stringify({ token: editTarget.token, duration: $("e-duration").value, models, ...common }),
+            body: JSON.stringify({
+              token: editTarget.token,
+              duration: $("e-duration").value,
+              team_id: $("e-team").value,
+              models,
+              ...common,
+            }),
           });
         } else {
           await api("/api/teams/update", {
@@ -1553,6 +1703,14 @@
       const act = ev.target.dataset.act;
       if (!act) return;
       try {
+        if (act === "u-del") {
+          const u = userCache[Number(ev.target.dataset.ui)];
+          if (!u) return;
+          if (!confirm(`'${u.email}' 사용자를 삭제할까요?`)) return;
+          await api("/api/users/delete", { method: "POST", body: JSON.stringify({ email: u.email }) });
+          await refreshUserList();
+          return;
+        }
         if (act.startsWith("t-")) {
           const t = teamCache[Number(ev.target.dataset.ti)];
           if (act === "t-edit") return openEdit("team", t);
@@ -1564,6 +1722,11 @@
           const k = keyCache[Number(ev.target.dataset.i)];
           if (act === "detail") return openDetail(k);
           if (act === "edit") return openEdit("key", k);
+          if (act === "rotate") {
+            if (!confirm(`'${k.key_alias}' 키를 재발급할까요? 기존 키 문자열은 바로 쓸 수 없게 됩니다.`)) return;
+            const data = await api("/api/keys/rotate", { method: "POST", body: JSON.stringify({ token: k.token }) });
+            $("new-key").textContent = `재발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}`;
+          }
           if (act === "del") {
             if (!confirm(`'${k.key_alias}' 키를 삭제할까요? 학생은 더 이상 사용할 수 없게 됩니다.`)) return;
             await api("/api/keys/delete", { method: "POST", body: JSON.stringify({ keys: [k.token] }) });

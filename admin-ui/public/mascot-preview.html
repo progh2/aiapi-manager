@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>엘피 화면 미리보기</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { padding: 1.5rem; }
+    .preview-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.25rem 1.4rem;
+      margin-bottom: 1.5rem;
+    }
+    .preview-block h2 {
+      margin: 0 0 .75rem;
+      font-size: 1rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .login-look {
+      max-width: 520px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .login-look .mascot-wrap {
+      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+    }
+    .login-look .speech::before,
+    .login-look .speech::after { display: none; }
+    .login-look .mascot-img { width: 160px; height: 160px; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="site-header">
+      <div class="brand">
+        <div class="brand-icon">🌿</div>
+        <div>
+          <h1>AI API Manager</h1>
+          <p>마스코트 화면 미리보기 (#37)</p>
+        </div>
+      </div>
+    </header>
+    <div id="screens"></div>
+  </div>
+  <script>
+    const screens = [
+      { id: "welcome", title: "로그인", pose: "welcome", compact: false, login: true },
+      { id: "dashboard", title: "관리자 · 사용량 대시보드", pose: "dashboard", compact: true },
+      { id: "users", title: "관리자 · 사용자 등록", pose: "users", compact: true },
+      { id: "groups", title: "관리자 · 그룹 관리", pose: "groups", compact: true },
+      { id: "keys", title: "관리자 · 키 발급", pose: "keys", compact: true },
+      { id: "usage", title: "일반 사용자 · 내 키·사용량", pose: "usage", compact: false },
+      { id: "warn", title: "오류 / 경고", pose: "warn", compact: true },
+      { id: "success", title: "성공", pose: "success", compact: true },
+    ];
+
+    async function main() {
+      const data = await (await fetch("/mascot/manifest.json")).json();
+      const root = document.getElementById("screens");
+      for (const s of screens) {
+        const pose = data.poses[s.pose];
+        const block = document.createElement("section");
+        block.className = "preview-block";
+        block.id = "screen-" + s.id;
+        const wrapClass = "mascot-wrap" + (s.compact ? " compact" : "") + (s.login ? " login-look" : "");
+        block.innerHTML = `
+          <h2>${s.title}</h2>
+          <div class="${s.login ? "login-look" : ""}">
+            <div class="mascot-wrap${s.compact && !s.login ? " compact" : ""}">
+              <img class="mascot-img" src="/mascot/${pose.file}" alt="${data.name}">
+              <div class="speech">
+                <div class="name">${data.name} · ${data.role || ""}</div>
+                ${pose.line}
+              </div>
+            </div>
+            ${s.login ? '<p class="muted">등록된 구글 계정으로만 로그인할 수 있습니다.</p><button class="primary" type="button">Google로 로그인</button>' : ""}
+          </div>`;
+        root.appendChild(block);
+      }
+    }
+    main();
+  </script>
+</body>
+</html>
