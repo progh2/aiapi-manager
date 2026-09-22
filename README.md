@@ -24,6 +24,7 @@ LiteLLM Proxy (:4000) ──── Postgres (키·예산·사용량, 내부 전�
 | `admin-ui/` | 관리자 웹 UI. Firebase 구글 로그인 → 학급/조·키 관리, 사용량 대시보드 |
 | `admin-ui/public/charts.js` | 대시보드 차트(인라인 SVG, 외부 라이브러리 없음) |
 | `scripts/issue_keys.py` | 학생 명단 CSV로 키 일괄 발급 (표준 라이브러리만 사용) |
+| `scripts/revoke_camp_keys.py` | 캠프 키 당일 종료 후 차단·회수 (cron 훅) |
 
 ## 공통 사전 준비 (최초 1회)
 
@@ -180,13 +181,31 @@ P0 [#2](https://github.com/progh2/aiapi-manager/issues/2)·[#3](https://github.c
 
 중학생 AI 체험캠프처럼 학번 명단이 없으면 **캠프 짧은 키**에서 인원 N만 넣고 만든다.
 
-- 기본 만료는 **오늘 23:59**(당일 종료). 달력에서 다른 날로 바꿀 수 있다
+- 만료는 **오늘 23:59 당일 종료**로 고정이다. 다른 날로 바꿀 수 없다
+- 허용 모델은 **저가 모델만 필수** (이 프록시 기본: `gpt-4o-mini`). `gpt-4o` 는 거절한다
 - 코드는 `CAMP-A7K2`처럼 짧고, 헷갈리는 글자(0/O, 1/I/L)는 빼 둔다
 - 학생 API 키는 코드 앞에 `sk-`를 붙인 `sk-CAMP-A7K2`이다. LiteLLM이 짧은 커스텀 키를 거절하면 장문 `sk-…`를 만들고, 목록에 코드↔키 매핑을 같이 보여 준다
 - 결과는 큰 글씨 목록·복사·CSV·인쇄용 보기
-- 모델 제한 필수와 자정 스케줄 회수는 아직 강제하지 않는다 (#20)
+- 캠프가 끝나면 **오늘 캠프 키 일괄 차단** 또는 아래 스케줄 훅으로 막는다
 
-관리 API `POST /api/keys/camp` `{ count, prefix?, budget?, expires?, team_id?, models? }` 는 다른 관리 API와 같이 Firebase ID 토큰 + `ADMIN_EMAILS`이다.
+관리 API `POST /api/keys/camp` `{ count, prefix?, budget?, team_id?, models }` 는 다른 관리 API와 같이 Firebase ID 토큰 + `ADMIN_EMAILS`이다. `models` 는 저가 모델 1개 이상 필수. `expires` 를 오늘이 아닌 값으로 보내면 400이다.
+
+### 캠프 키 당일 회수
+
+LiteLLM `duration`(오늘 23:59:59)에 더해, 운영자가 캠프 키만 모아 차단할 수 있다. 학급 일괄 키는 건드리지 않는다.
+
+- 화면: **오늘 캠프 키 일괄 차단** (수업이 일찍 끝났을 때) / **만료된 캠프 키 차단**
+- 관리 API `POST /api/keys/camp/revoke` `{ action: "block"|"delete", when: "today"|"due"|"all" }`
+- 같은 필터를 `POST /api/keys/revoke` 의 `filter=camp|camp_today|camp_due` 로도 쓸 수 있다
+- 스케줄(cron)은 LiteLLM 마스터 키로 아래를 자정 직후에 돌린다
+
+```sh
+python3 scripts/revoke_camp_keys.py \
+  --base-url http://NAS주소:4000 --master-key $LITELLM_MASTER_KEY \
+  --when due --action block
+```
+
+키 메타 `metadata.aiapi_camp.schedule_revoke` 에 `{ at: "end_of_day", filter: "camp_due", action: "block" }` 를 남겨 둔다.
 
 ### 기간 만료 키 일괄 회수·차단
 

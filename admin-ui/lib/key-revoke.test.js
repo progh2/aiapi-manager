@@ -3,6 +3,9 @@ const assert = require("node:assert/strict");
 const {
   isExpired,
   isExpiringSoon,
+  isCampKey,
+  isCampDue,
+  isCampToday,
   matchesFilter,
   effectiveFilter,
   selectKeysForRevoke,
@@ -20,6 +23,7 @@ function key(partial) {
     blocked: !!partial.blocked,
     max_budget: 2,
     spend: 0,
+    metadata: partial.metadata,
   };
 }
 
@@ -49,6 +53,7 @@ const SAMPLE = [
     key_alias: "camp-expired",
     team_id: "team-2",
     expires: "2026-09-14T00:00:00.000Z",
+    metadata: { aiapi_camp: { kind: "camp", code: "CAMP-OLD", expires_ymd: "2026-09-14" } },
   }),
   key({
     key_alias: "unlimited",
@@ -115,6 +120,60 @@ describe("effectiveFilter", () => {
   });
   it("조건이 없으면 만료됨", () => {
     assert.equal(effectiveFilter({}, false), "expired");
+  });
+});
+
+describe("캠프 필터", () => {
+  const localNow = new Date(2026, 8, 17, 12, 0, 0);
+  const campToday = key({
+    key_alias: "CAMP-TODAY",
+    expires: new Date(2026, 8, 17, 23, 59, 59).toISOString(),
+    metadata: { aiapi_camp: { kind: "camp", code: "CAMP-TODAY", expires_ymd: "2026-09-17" } },
+  });
+  const campPast = key({
+    key_alias: "CAMP-PAST",
+    expires: new Date(2026, 8, 16, 23, 59, 59).toISOString(),
+    metadata: { aiapi_camp: { kind: "camp", code: "CAMP-PAST", expires_ymd: "2026-09-16" } },
+  });
+  const classKey = key({
+    key_alias: "20261001-홍길동",
+    expires: new Date(2026, 8, 16, 23, 59, 59).toISOString(),
+  });
+
+  it("metadata.aiapi_camp 만 캠프 키로 본다", () => {
+    assert.equal(isCampKey(campToday), true);
+    assert.equal(isCampKey(classKey), false);
+    assert.equal(isCampDue(campPast, localNow), true);
+    assert.equal(isCampDue(campToday, localNow), false);
+    assert.equal(isCampToday(campToday, localNow), true);
+    assert.equal(isCampToday(campPast, localNow), false);
+  });
+
+  it("filter=camp / camp_due / camp_today", () => {
+    const keys = [campToday, campPast, classKey];
+    assert.deepEqual(
+      keys.filter((k) => matchesFilter(k, "camp", { now: localNow })).map((k) => k.key_alias),
+      ["CAMP-TODAY", "CAMP-PAST"]
+    );
+    assert.deepEqual(
+      keys.filter((k) => matchesFilter(k, "camp_due", { now: localNow })).map((k) => k.key_alias),
+      ["CAMP-PAST"]
+    );
+    assert.deepEqual(
+      keys.filter((k) => matchesFilter(k, "camp_today", { now: localNow })).map((k) => k.key_alias),
+      ["CAMP-TODAY"]
+    );
+  });
+
+  it("camp_due 는 학급 키를 건드리지 않는다", async () => {
+    const keys = [campToday, campPast, classKey].map((k) => ({ ...k }));
+    const { litellm, calls } = mockLiteLLM({ keys });
+    const out = await revokeKeys({ action: "block", filter: "camp_due" }, { litellm, now: localNow });
+    assert.equal(out.filter, "camp_due");
+    assert.equal(out.results.length, 1);
+    assert.equal(out.results[0].alias, "CAMP-PAST");
+    assert.equal(calls.filter((c) => c.path === "/key/block").length, 1);
+    assert.equal(keys.find((k) => k.key_alias === "20261001-홍길동").blocked, false);
   });
 });
 

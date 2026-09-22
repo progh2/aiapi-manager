@@ -274,10 +274,10 @@
       <legend>캠프 짧은 키 (명단 없이 N개)</legend>
       <p class="muted bulk-hint">
         중학생 체험캠프처럼 <b>명단이 없어도</b> 인원 N만큼 짧은 코드를 만듭니다.
-        기본 만료는 <b>오늘 23:59</b>입니다. 칠판에는 <code>CAMP-A7K2</code>처럼 적고,
+        만료는 <b>오늘 23:59 당일 종료</b>로 고정입니다. 칠판에는 <code>CAMP-A7K2</code>처럼 적고,
         학생 API 키는 앞에 <code>sk-</code>를 붙인 <code>sk-CAMP-A7K2</code>입니다.
         LiteLLM이 짧은 커스텀 키를 거절하면 장문 <code>sk-…</code>를 만들고 목록에 코드↔키 매핑을 보여 줍니다.
-        (#20 모델 필수·자정 회수 스케줄은 아직 강제하지 않습니다.)
+        허용 모델은 <b>저가 모델만 필수</b>입니다. 캠프가 끝나면 아래 버튼이나 자정 회수 훅으로 막습니다.
       </p>
       <form id="camp-form">
         <div class="form-grid">
@@ -290,8 +290,8 @@
           <label>인당 예산 (USD)
             <input id="camp-budget" type="number" step="0.5" min="0" value="1">
           </label>
-          <label>만료일
-            <input id="camp-expires" type="date">
+          <label>만료
+            <input id="camp-expires" type="text" readonly disabled>
           </label>
           <label>소속 학급/조
             <select id="camp-team">
@@ -306,7 +306,7 @@
             <input id="camp-rpm" type="number" min="1" value="10" placeholder="무제한">
           </label>
         </div>
-        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(예: gpt-4o-mini만. 안 고르면 학급 설정/전체. #20에서 필수로 바꿀 예정)</span></div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 * <span class="muted">(캠프는 저가 모델만. 예: gpt-4o-mini)</span></div>
         <div id="camp-model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
         <p class="muted bulk-hint" id="camp-preview"></p>
         <div class="bulk-actions">
@@ -315,6 +315,12 @@
         </div>
       </form>
       <div id="camp-result"></div>
+      <div class="bulk-actions" style="margin-top:.8rem">
+        <button type="button" class="primary" id="camp-revoke-today">오늘 캠프 키 일괄 차단</button>
+        <button type="button" id="camp-revoke-due">만료된 캠프 키 차단</button>
+        <span class="muted">당일 끝나면 수동으로 막거나, cron으로 <code>scripts/revoke_camp_keys.py</code>를 돌립니다.</span>
+      </div>
+      <div id="camp-revoke-result"></div>
     </fieldset>
     <div id="camp-print-sheet"></div>
 
@@ -375,11 +381,15 @@
         <option value="expiring">만료 임박 (7일)</option>
         <option value="blocked">차단됨</option>
         <option value="active">사용 중</option>
+        <option value="camp">캠프 키</option>
+        <option value="camp_today">오늘 캠프</option>
+        <option value="camp_due">만료된 캠프</option>
       </select>
       <span id="filter-count" class="muted"></span>
     </div>
     <p class="muted bulk-hint">
-      학기·캠프가 끝나면 학급/조 또는 <b>만료됨</b> 필터로 모은 뒤 일괄 차단하거나 회수(삭제)하세요.
+      학기·캠프가 끝나면 학급/조 또는 <b>만료됨 / 캠프 키</b> 필터로 모은 뒤 일괄 차단하거나 회수(삭제)하세요.
+      캠프 당일 종료는 위 <b>오늘 캠프 키 일괄 차단</b> 또는 자정 회수 훅을 씁니다.
       차단은 나중에 해제할 수 있고, 회수는 LiteLLM에서 키를 지웁니다.
       일부 학생만 금액을 더하거나 만료를 늘리려면 행의 <b>상세</b>를 엽니다.
     </p>
@@ -530,6 +540,18 @@
     let availableModels = [];
     let keyCache = [];
     let teamCache = [];
+    let campPolicy = {
+      require_models: true,
+      force_same_day_expiry: true,
+      low_cost_models: ["gpt-4o-mini"],
+      schedule_revoke: { at: "end_of_day", filter: "camp_due", action: "block" },
+    };
+
+    function isCampLowCost(name) {
+      const list = campPolicy.low_cost_models || ["gpt-4o-mini"];
+      if (list.includes(name)) return true;
+      return /(mini|nano|flash|haiku|small)/i.test(String(name || ""));
+    }
 
     async function api(path, opts = {}) {
       const token = await auth.currentUser.getIdToken();
@@ -547,9 +569,26 @@
     }
 
     function modelCheckboxes(container, prefix, checked = []) {
+      if (prefix === "camp-models") {
+        campModelCheckboxes(container, checked);
+        return;
+      }
       container.innerHTML = availableModels.map((m) =>
         `<label><input type="checkbox" name="${prefix}" value="${m}" ${checked.includes(m) ? "checked" : ""}> ${m}</label>`
       ).join("") || '<span class="muted">모델 없음</span>';
+    }
+
+    function campModelCheckboxes(container, checked = []) {
+      const cheap = availableModels.filter(isCampLowCost);
+      const pick = checked.filter(isCampLowCost);
+      const pre = pick.length ? pick : (cheap.includes("gpt-4o-mini") ? ["gpt-4o-mini"] : cheap.slice(0, 1));
+      const cheapHtml = cheap.map((m) =>
+        `<label><input type="checkbox" name="camp-models" value="${esc(m)}" ${pre.includes(m) ? "checked" : ""}> ${esc(m)}</label>`
+      ).join("");
+      const blocked = availableModels.filter((m) => !isCampLowCost(m)).map((m) =>
+        `<label class="muted"><input type="checkbox" disabled> ${esc(m)} <span class="badge">캠프 불가</span></label>`
+      ).join("");
+      container.innerHTML = (cheapHtml || '<span class="muted">저가 모델 없음</span>') + blocked;
     }
 
     function checkedModels(prefix) {
@@ -571,8 +610,23 @@
       return '<span class="muted">전체</span>';
     }
 
+    async function loadCampPolicy() {
+      try {
+        campPolicy = await api("/api/keys/camp/policy");
+      } catch {
+        campPolicy = {
+          require_models: true,
+          force_same_day_expiry: true,
+          low_cost_models: ["gpt-4o-mini"],
+          expires: todayYmd(),
+          schedule_revoke: { at: "end_of_day", filter: "camp_due", action: "block" },
+        };
+      }
+    }
+
     async function loadModels() {
       try {
+        await loadCampPolicy();
         availableModels = (await api("/api/models")).models;
         modelCheckboxes($("model-boxes"), "models");
         modelCheckboxes($("t-model-boxes"), "t-models");
@@ -582,6 +636,8 @@
           $("mock-chat-model").innerHTML = availableModels
             .map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
         }
+        fillCampExpires();
+        updateCampPreview();
       } catch (e) {
         const msg = "모델 목록 로드 실패: " + e.message;
         $("model-boxes").textContent = msg;
@@ -903,8 +959,10 @@
     }
     $("bulk-expires").min = todayYmd();
     $("expires").min = todayYmd();
-    $("camp-expires").min = todayYmd();
-    if (!$("camp-expires").value) $("camp-expires").value = todayYmd();
+    function fillCampExpires() {
+      $("camp-expires").value = `${todayYmd()} 23:59 당일 종료`;
+    }
+    fillCampExpires();
 
     function toggleCampTeamName() {
       $("camp-team-name-wrap").style.display = $("camp-team").value === "__new__" ? "" : "none";
@@ -920,16 +978,18 @@
     function updateCampPreview() {
       const n = Number($("camp-count").value);
       const prefix = ($("camp-prefix").value || "CAMP").trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "CAMP";
-      const expires = $("camp-expires").value || todayYmd();
+      const expires = todayYmd();
       const budget = $("camp-budget").value || "1";
+      const models = checkedModels("camp-models");
+      const modelTxt = models.length ? models.join(", ") : "모델 미선택(필수)";
       $("camp-preview").innerHTML = Number.isInteger(n) && n > 0
-        ? `미리보기 <b>${n}개</b> · prefix <code>${esc(prefix)}</code> · 예: <code>${esc(prefix)}-A7K2</code> → API 키 <code>sk-${esc(prefix)}-A7K2</code> · 인당 $${esc(budget)} · <b>${esc(expires)} 당일 종료</b>`
+        ? `미리보기 <b>${n}개</b> · prefix <code>${esc(prefix)}</code> · 예: <code>${esc(prefix)}-A7K2</code> → API 키 <code>sk-${esc(prefix)}-A7K2</code> · 인당 $${esc(budget)} · 모델 <b>${esc(modelTxt)}</b> · <b>${esc(expires)} 당일 종료</b>`
         : "인원 N을 넣으면 미리보기가 나타납니다.";
     }
     $("camp-count").addEventListener("input", updateCampPreview);
     $("camp-prefix").addEventListener("input", updateCampPreview);
     $("camp-budget").addEventListener("input", updateCampPreview);
-    $("camp-expires").addEventListener("change", updateCampPreview);
+    $("camp-model-boxes").addEventListener("change", updateCampPreview);
     updateCampPreview();
 
     function renderCampResults(out) {
@@ -944,6 +1004,7 @@
         + ` · 만료 <b>${esc(out.expires || "")} 당일 종료</b>`
         + (out.max_budget != null ? ` · 인당 $${esc(out.max_budget)}` : "")
         + (out.prefix ? ` · prefix ${esc(out.prefix)}` : "")
+        + ((out.models || []).length ? ` · 모델 ${esc(out.models.join(", "))}` : "")
         + (mapped ? ` · 장문 키 매핑 ${mapped}개` : "")
         + `</p>`;
       html += `<p class="bulk-hint">칠판에는 짧은 코드만 적으세요. 학생 코드의 <code>api_key</code>는 `
@@ -1003,14 +1064,19 @@
         $("error").textContent = "인원 N은 1 이상의 정수여야 합니다";
         return;
       }
+      const models = checkedModels("camp-models");
+      if (!models.length) {
+        $("error").textContent = "캠프 키는 허용 모델을 반드시 고르세요 (저가 모델만)";
+        return;
+      }
       const teamSel = $("camp-team").value;
       const payload = {
         count,
         prefix: $("camp-prefix").value,
         budget: $("camp-budget").value,
-        expires: $("camp-expires").value || todayYmd(),
+        expires: todayYmd(),
         rpm_limit: $("camp-rpm").value,
-        models: checkedModels("camp-models"),
+        models,
       };
       if (teamSel === "__new__") {
         const name = $("camp-team-name").value.trim();
@@ -1034,6 +1100,36 @@
       } catch (e) { $("error").textContent = e.message; }
       finally { btn.disabled = false; }
     };
+
+    async function campRevoke(when) {
+      $("error").textContent = "";
+      const today = when === "today";
+      const msg = today
+        ? "오늘 발급한 캠프 키를 모두 차단할까요?\n학생은 더 이상 호출할 수 없습니다. 나중에 해제할 수 있습니다."
+        : "만료된 캠프 키(어제 이전)를 차단할까요?\n학급 키는 건드리지 않습니다.";
+      if (!confirm(msg)) return;
+      const btn = today ? $("camp-revoke-today") : $("camp-revoke-due");
+      btn.disabled = true;
+      try {
+        const out = await api("/api/keys/camp/revoke", {
+          method: "POST",
+          body: JSON.stringify({ action: "block", when }),
+        });
+        const box = $("camp-revoke-result");
+        if (box) {
+          const n = (out.results || []).length;
+          const fail = (out.results || []).filter((r) => r.error).length;
+          box.innerHTML = `<p class="bulk-hint"><b>캠프 키 차단</b> — 대상 ${n}개`
+            + (fail ? ` · <span class="badge red">실패 ${fail}건</span>` : "")
+            + ` · 필터 <code>${esc(out.filter || when)}</code></p>`;
+        }
+        if (typeof renderRevokeResults === "function") renderRevokeResults(out);
+        await refreshKeys();
+      } catch (e) { $("error").textContent = e.message; }
+      finally { btn.disabled = false; }
+    }
+    $("camp-revoke-today").onclick = () => campRevoke("today");
+    $("camp-revoke-due").onclick = () => campRevoke("due");
 
     function parseBulkRoster() {
       if (!window.Roster) return { students: [], errors: [{ error: "명단 파서를 불러오지 못했습니다" }] };

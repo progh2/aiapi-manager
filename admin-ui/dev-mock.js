@@ -7,7 +7,7 @@ const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
 const { adjustKey, keyDetail } = require("./lib/key-adjust");
 const { resolveIssueModels, simulateChatCompletion } = require("./lib/model-allowlist");
-const { issueCampKeys } = require("./lib/camp-keys");
+const { issueCampKeys, campIssuePolicy, revokeCampKeys, todayYmd } = require("./lib/camp-keys");
 
 const PORT = Number(process.env.PORT || 3456);
 const app = express();
@@ -104,12 +104,41 @@ function seedDemo() {
   });
   add({
     token: "sk-mock-camp-expired",
-    key_alias: "camp-만료게스트",
+    key_alias: "CAMP-OLD1",
     team_id: "team-2",
     max_budget: 1,
     spend: 0.3,
     expires: new Date(Date.now() - 2 * 86400000).toISOString(),
     blocked: true,
+    metadata: {
+      aiapi_camp: {
+        kind: "camp",
+        code: "CAMP-OLD1",
+        prefix: "CAMP",
+        expires_ymd: todayYmd(new Date(Date.now() - 2 * 86400000)),
+        models: ["gpt-4o-mini"],
+        schedule_revoke: { at: "end_of_day", filter: "camp_due", action: "block" },
+      },
+    },
+  });
+  add({
+    token: "sk-CAMP-DEMO",
+    key_alias: "CAMP-DEMO",
+    team_id: "team-2",
+    max_budget: 1,
+    spend: 0.05,
+    expires: new Date(new Date().setHours(23, 59, 59, 999)).toISOString(),
+    models: ["gpt-4o-mini"],
+    metadata: {
+      aiapi_camp: {
+        kind: "camp",
+        code: "CAMP-DEMO",
+        prefix: "CAMP",
+        expires_ymd: todayYmd(),
+        models: ["gpt-4o-mini"],
+        schedule_revoke: { at: "end_of_day", filter: "camp_due", action: "block" },
+      },
+    },
   });
   add({
     token: "sk-mock-unlimited",
@@ -305,6 +334,16 @@ app.post("/api/keys/camp", async (req, res) => {
     res.status(e.status || 502).json({ error: e.message });
   }
 });
+app.get("/api/keys/camp/policy", (_req, res) => {
+  res.json({ ...campIssuePolicy(), expires: todayYmd() });
+});
+app.post("/api/keys/camp/revoke", async (req, res) => {
+  try {
+    res.json(await revokeCampKeys(req.body, { litellm }));
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
 app.get("/api/keys/info", async (req, res) => {
   try {
     res.json(await keyDetail(req.query.token, { litellm }));
@@ -380,5 +419,5 @@ app.get("/api/analytics", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄·캠프 짧은 키·만료 회수 데모)`);
+  console.log(`admin-ui mock http://127.0.0.1:${PORT}  (학급 일괄·캠프 짧은 키·모델 제한·당일 회수 데모)`);
 });

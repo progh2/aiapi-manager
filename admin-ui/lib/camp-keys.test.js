@@ -3,18 +3,23 @@ const assert = require("node:assert/strict");
 const {
   ALPHABET,
   MAX_CAMP,
+  CAMP_LOW_COST_MODELS,
   todayYmd,
   normalizePrefix,
   formatCode,
   litellmKeyFor,
   isCampCode,
+  isLowCostModel,
   campIssuePolicy,
   defaultCampExpires,
+  campExpires,
+  resolveCampModels,
   campMetadata,
   generateCampCodes,
   printList,
   isCustomKeyRejected,
   issueCampKeys,
+  revokeCampKeys,
 } = require("./camp-keys");
 const { assignClassBudgets } = require("./class-assign");
 
@@ -96,12 +101,16 @@ describe("generateCampCodes", () => {
   });
 });
 
-describe("당일 만료 기본값과 인쇄 목록", () => {
-  it("expires가 없으면 오늘을 쓴다", () => {
+describe("당일 만료 강제와 인쇄 목록", () => {
+  it("expires가 없으면 오늘을 쓰고, 다른 날은 거절한다", () => {
     const now = new Date(2026, 8, 17, 10, 0, 0);
     assert.equal(defaultCampExpires({}, now), "2026-09-17");
     assert.equal(defaultCampExpires({ expires: "  " }, now), "2026-09-17");
-    assert.equal(defaultCampExpires({ expires: "2026-09-18" }, now), "2026-09-18");
+    assert.equal(campExpires({ expires: "2026-09-17" }, now), "2026-09-17");
+    assert.throws(
+      () => defaultCampExpires({ expires: "2026-09-18" }, now),
+      (e) => e.status === 400 && /당일 종료/.test(e.message)
+    );
   });
 
   it("인쇄·CSV 목록을 만든다", () => {
@@ -118,25 +127,57 @@ describe("당일 만료 기본값과 인쇄 목록", () => {
   });
 });
 
-describe("campIssuePolicy (#20 훅)", () => {
-  it("모델 필수·스케줄 회수는 아직 끈다", () => {
+describe("campIssuePolicy (#20)", () => {
+  it("모델 필수·당일 종료·스케줄 회수를 켠다", () => {
     const p = campIssuePolicy({ count: 3 });
-    assert.equal(p.require_models, false);
+    assert.equal(p.require_models, true);
     assert.equal(p.force_same_day_expiry, true);
-    assert.equal(p.schedule_revoke, null);
+    assert.equal(p.low_cost_models_only, true);
+    assert.deepEqual(p.low_cost_models, CAMP_LOW_COST_MODELS);
+    assert.equal(p.schedule_revoke.at, "end_of_day");
+    assert.equal(p.schedule_revoke.filter, "camp_due");
+    assert.equal(p.schedule_revoke.action, "block");
+    assert.equal(p.schedule_revoke.endpoint, "/api/keys/revoke");
+    assert.equal(p.schedule_revoke.camp_endpoint, "/api/keys/camp/revoke");
   });
 
-  it("메타에 캠프 코드와 만료일을 남긴다", () => {
+  it("저가 모델만 저가이다", () => {
+    assert.equal(isLowCostModel("gpt-4o-mini"), true);
+    assert.equal(isLowCostModel("claude-3-haiku"), true);
+    assert.equal(isLowCostModel("gpt-4o"), false);
+    assert.equal(isLowCostModel(""), false);
+  });
+
+  it("캠프 모델은 필수이고 저가만 통과한다", () => {
+    assert.deepEqual(resolveCampModels(["gpt-4o-mini"], []), ["gpt-4o-mini"]);
+    assert.throws(
+      () => resolveCampModels([], []),
+      (e) => e.status === 400 && /반드시/.test(e.message)
+    );
+    assert.throws(
+      () => resolveCampModels(["gpt-4o"], []),
+      (e) => e.status === 400 && /저가/.test(e.message) && /gpt-4o/.test(e.message)
+    );
+    assert.throws(
+      () => resolveCampModels(["gpt-4o-mini"], ["gpt-4o"]),
+      (e) => e.status === 400 && /겹치지/.test(e.message)
+    );
+  });
+
+  it("메타에 캠프 코드·만료일·회수 훅을 남긴다", () => {
     const meta = campMetadata({
       code: "CAMP-A7K2",
       prefix: "CAMP",
       expires: "2026-09-17",
+      models: ["gpt-4o-mini"],
       policy: campIssuePolicy({}),
     });
     assert.equal(meta.aiapi_camp.kind, "camp");
     assert.equal(meta.aiapi_camp.code, "CAMP-A7K2");
     assert.equal(meta.aiapi_camp.expires_ymd, "2026-09-17");
-    assert.equal(meta.aiapi_camp.schedule_revoke, null);
+    assert.deepEqual(meta.aiapi_camp.models, ["gpt-4o-mini"]);
+    assert.equal(meta.aiapi_camp.schedule_revoke.at, "end_of_day");
+    assert.equal(meta.aiapi_camp.schedule_revoke.filter, "camp_due");
   });
 
   it("커스텀 키 거절 문구를 알아본다", () => {
@@ -153,6 +194,7 @@ describe("issueCampKeys", () => {
       count: 3,
       prefix: "CAMP",
       budget: 1,
+      models: ["gpt-4o-mini"],
       randomInt: letterRng("AAAABBBBCCCC"),
     }, { litellm, now });
 
@@ -161,6 +203,8 @@ describe("issueCampKeys", () => {
     assert.equal(out.prefix, "CAMP");
     assert.equal(out.max_budget, 1);
     assert.equal(out.policy.force_same_day_expiry, true);
+    assert.equal(out.policy.require_models, true);
+    assert.deepEqual(out.models, ["gpt-4o-mini"]);
     assert.equal(out.results[0].code, "CAMP-AAAA");
     assert.equal(out.results[0].key, "sk-CAMP-AAAA");
     assert.equal(out.results[0].mapped, false);
@@ -173,7 +217,9 @@ describe("issueCampKeys", () => {
     assert.equal(gens[0].body.key_alias, "CAMP-AAAA");
     assert.match(gens[0].body.duration, /^\d+s$/);
     assert.equal(gens[0].body.max_budget, 1);
+    assert.deepEqual(gens[0].body.models, ["gpt-4o-mini"]);
     assert.equal(gens[0].body.metadata.aiapi_camp.expires_ymd, "2026-09-17");
+    assert.equal(gens[0].body.metadata.aiapi_camp.schedule_revoke.filter, "camp_due");
 
     const end = new Date(2026, 8, 17, 23, 59, 59, 999);
     const secs = Number(gens[0].body.duration.slice(0, -1));
@@ -186,6 +232,7 @@ describe("issueCampKeys", () => {
     const { litellm, calls } = mockLiteLLM({ rejectCustom: true });
     const out = await issueCampKeys({
       count: 1,
+      models: ["gpt-4o-mini"],
       randomInt: letterRng("A7K2"),
     }, { litellm, now });
     assert.equal(out.results[0].code, "CAMP-A7K2");
@@ -206,7 +253,43 @@ describe("issueCampKeys", () => {
     );
   });
 
-  it("학급 허용 목록을 물려받는다", async () => {
+  it("모델이 없으면 400", async () => {
+    const now = new Date(2026, 8, 17, 9, 0, 0);
+    const { litellm } = mockLiteLLM();
+    await assert.rejects(
+      () => issueCampKeys({ count: 1, randomInt: letterRng("A7K2") }, { litellm, now }),
+      (e) => e.status === 400 && /모델/.test(e.message)
+    );
+  });
+
+  it("gpt-4o 같은 고가 모델은 400", async () => {
+    const now = new Date(2026, 8, 17, 9, 0, 0);
+    const { litellm } = mockLiteLLM();
+    await assert.rejects(
+      () => issueCampKeys({
+        count: 1,
+        models: ["gpt-4o"],
+        randomInt: letterRng("A7K2"),
+      }, { litellm, now }),
+      (e) => e.status === 400 && /저가/.test(e.message)
+    );
+  });
+
+  it("다른 날 만료는 400", async () => {
+    const now = new Date(2026, 8, 17, 9, 0, 0);
+    const { litellm } = mockLiteLLM();
+    await assert.rejects(
+      () => issueCampKeys({
+        count: 1,
+        models: ["gpt-4o-mini"],
+        expires: "2026-09-18",
+        randomInt: letterRng("A7K2"),
+      }, { litellm, now }),
+      (e) => e.status === 400 && /당일 종료/.test(e.message)
+    );
+  });
+
+  it("학급 허용 목록과 교집합한다", async () => {
     const now = new Date(2026, 8, 17, 9, 0, 0);
     const { litellm, calls } = mockLiteLLM({
       teams: [{ team_id: "team-2", team_alias: "캠프1일차", models: ["gpt-4o-mini"] }],
@@ -214,12 +297,72 @@ describe("issueCampKeys", () => {
     const out = await issueCampKeys({
       count: 1,
       team_id: "team-2",
+      models: ["gpt-4o-mini"],
       randomInt: letterRng("M9QX"),
     }, { litellm, now });
     assert.deepEqual(out.models, ["gpt-4o-mini"]);
     const gen = calls.find((c) => c.path === "/key/generate");
     assert.deepEqual(gen.body.models, ["gpt-4o-mini"]);
     assert.equal(gen.body.team_id, "team-2");
+  });
+});
+
+describe("revokeCampKeys", () => {
+  const campDue = {
+    token: "sk-CAMP-OLD1",
+    key_alias: "CAMP-OLD1",
+    expires: "2026-09-16T14:59:59.000Z",
+    blocked: false,
+    metadata: { aiapi_camp: { kind: "camp", code: "CAMP-OLD1", expires_ymd: "2026-09-16" } },
+  };
+  const campToday = {
+    token: "sk-CAMP-NEW1",
+    key_alias: "CAMP-NEW1",
+    expires: "2026-09-17T14:59:59.000Z",
+    blocked: false,
+    metadata: { aiapi_camp: { kind: "camp", code: "CAMP-NEW1", expires_ymd: "2026-09-17" } },
+  };
+  const classKey = {
+    token: "sk-class",
+    key_alias: "20261001-홍길동",
+    expires: "2026-09-16T14:59:59.000Z",
+    blocked: false,
+  };
+
+  function revokeMock(keys) {
+    const calls = [];
+    async function litellm(path, method, body) {
+      calls.push({ path, method, body });
+      if (path.startsWith("/key/list")) return { keys, total_pages: 1 };
+      if (path === "/key/block") {
+        const k = keys.find((x) => x.token === body.key);
+        if (k) k.blocked = true;
+        return { blocked: true };
+      }
+      throw new Error(`unexpected ${path}`);
+    }
+    return { litellm, calls };
+  }
+
+  it("when=due 는 지난 캠프 키만 차단한다", async () => {
+    const keys = [campDue, campToday, classKey].map((k) => ({ ...k }));
+    const { litellm, calls } = revokeMock(keys);
+    const now = new Date(2026, 8, 17, 9, 0, 0);
+    const out = await revokeCampKeys({ when: "due" }, { litellm, now });
+    assert.equal(out.filter, "camp_due");
+    assert.equal(out.results.length, 1);
+    assert.equal(out.results[0].alias, "CAMP-OLD1");
+    assert.equal(calls.filter((c) => c.path === "/key/block").length, 1);
+  });
+
+  it("when=today 는 오늘 캠프 키를 수동으로 막는다", async () => {
+    const keys = [campDue, campToday, classKey].map((k) => ({ ...k }));
+    const { litellm, calls } = revokeMock(keys);
+    const now = new Date(2026, 8, 17, 16, 0, 0);
+    const out = await revokeCampKeys({ when: "today", action: "block" }, { litellm, now });
+    assert.equal(out.filter, "camp_today");
+    assert.deepEqual(out.results.map((r) => r.alias), ["CAMP-NEW1"]);
+    assert.equal(calls.filter((c) => c.path === "/key/block").length, 1);
   });
 });
 
