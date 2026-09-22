@@ -404,6 +404,7 @@ app.get("/api/analytics", (req, res) => {
     .filter((k) => k.spend > 0)
     .map((k) => ({
       alias: k.key_alias,
+      team_id: k.team_id || null,
       team: teamName(k.team_id),
       spend: k.spend,
       budget: k.max_budget ?? null,
@@ -414,17 +415,24 @@ app.get("/api/analytics", (req, res) => {
     .sort((a, b) => b.spend - a.spend);
   const perTeam = new Map();
   for (const k of keyStats) {
-    const name = k.team || "학급 없음";
-    const cur = perTeam.get(name) || { name, spend: 0, budget: null, max_budget: null, remaining: null };
+    const teamKey = k.team_id || "";
+    const cur = perTeam.get(teamKey) || {
+      team_id: k.team_id || null,
+      name: k.team || "학급 없음",
+      spend: 0,
+      budget: null,
+      max_budget: null,
+      remaining: null,
+    };
     cur.spend = Number((cur.spend + k.spend).toFixed(3));
-    if (k.team) {
-      const team = teams.find((t) => (t.team_alias || t.team_id.slice(0, 8)) === k.team);
+    if (k.team_id) {
+      const team = teams.find((t) => t.team_id === k.team_id);
       const budget = team?.max_budget ?? null;
       cur.budget = budget;
       cur.max_budget = budget;
       cur.remaining = budget == null ? null : Number((budget - cur.spend).toFixed(3));
     }
-    perTeam.set(name, cur);
+    perTeam.set(teamKey, cur);
   }
   const budgetTotal = teamId
     ? (selectedTeam?.max_budget ?? null)

@@ -26,12 +26,15 @@ function forecast(dailySeries, horizonDays) {
 }
 
 function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId = "" }) {
-  const teamName = new Map(teams.map((t) => [t.team_id, t.team_alias || t.team_id.slice(0, 8)]));
+  const teamMeta = new Map(teams.map((t) => [t.team_id, {
+    name: t.team_alias || t.team_id.slice(0, 8),
+    budget: t.max_budget ?? null,
+  }]));
   const selectedTeam = teamId ? teams.find((t) => t.team_id === teamId) || null : null;
   const meta = new Map(keyList.map((k) => [k.token, {
     alias: k.key_alias || k.token.slice(0, 8),
     team_id: k.team_id || null,
-    team: k.team_id ? teamName.get(k.team_id) || "(삭제된 그룹)" : null,
+    team: k.team_id ? teamMeta.get(k.team_id)?.name || "(삭제된 그룹)" : null,
     budget: k.max_budget ?? null,
   }]));
   const allowedTokens = teamId
@@ -105,6 +108,7 @@ function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId =
     const budget = m?.budget ?? null;
     return {
       alias: m?.alias || hash.slice(0, 8),
+      team_id: m?.team_id || null,
       team: m?.team || null,
       budget,
       max_budget: budget,
@@ -116,17 +120,23 @@ function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId =
 
   const perTeam = new Map();
   for (const k of keyStats) {
-    const name = k.team || "학급 없음";
-    const cur = perTeam.get(name) || { name, spend: 0, budget: null, max_budget: null, remaining: null };
+    const teamKey = k.team_id || "";
+    const cur = perTeam.get(teamKey) || {
+      team_id: k.team_id || null,
+      name: k.team || "학급 없음",
+      spend: 0,
+      budget: null,
+      max_budget: null,
+      remaining: null,
+    };
     cur.spend += k.spend;
-    if (k.team) {
-      const team = teams.find((t) => (t.team_alias || t.team_id.slice(0, 8)) === k.team);
-      const budget = team?.max_budget ?? null;
+    if (k.team_id) {
+      const budget = teamMeta.get(k.team_id)?.budget ?? null;
       cur.budget = budget;
       cur.max_budget = budget;
       cur.remaining = remainingBudget(budget, cur.spend);
     }
-    perTeam.set(name, cur);
+    perTeam.set(teamKey, cur);
   }
 
   const totalSpend = cumulative.at(-1) || 0;

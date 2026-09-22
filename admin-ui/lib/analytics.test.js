@@ -73,9 +73,9 @@ describe("buildAnalytics", () => {
     assert.equal(out.forecast.future.length, 2);
 
     assert.deepEqual(out.teamStats, [
-      { name: "1반", spend: 8, budget: 10, max_budget: 10, remaining: 2 },
-      { name: "학급 없음", spend: 5, budget: null, max_budget: null, remaining: null },
-      { name: "2반", spend: 4, budget: 8, max_budget: 8, remaining: 4 },
+      { team_id: "team-a", name: "1반", spend: 8, budget: 10, max_budget: 10, remaining: 2 },
+      { team_id: null, name: "학급 없음", spend: 5, budget: null, max_budget: null, remaining: null },
+      { team_id: "team-b", name: "2반", spend: 4, budget: 8, max_budget: 8, remaining: 4 },
     ]);
     assert.equal(out.keyStats.find((k) => k.alias === "홍길동").remaining, 1);
     assert.equal(out.keyStats.find((k) => k.alias === "김철수").remaining, 1);
@@ -91,7 +91,7 @@ describe("buildAnalytics", () => {
     assert.equal(out.totalSpend, 8);
     assert.deepEqual(out.keyStats.map((k) => k.alias), ["김철수", "홍길동"]);
     assert.deepEqual(out.teamStats, [
-      { name: "1반", spend: 8, budget: 10, max_budget: 10, remaining: 2 },
+      { team_id: "team-a", name: "1반", spend: 8, budget: 10, max_budget: 10, remaining: 2 },
     ]);
     assert.equal(out.budget.team, "1반");
     assert.equal(out.budget.total, 10);
