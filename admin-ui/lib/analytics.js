@@ -1,5 +1,9 @@
 const DAY_MS = 86400000;
-const ymd = (d) => d.toISOString().slice(0, 10);
+const { ymdInSeoul } = require("./seoul-date");
+const { soonestTeam } = require("./team-exhaust");
+
+// 하루의 경계는 학교 달력(Asia/Seoul)이다.
+const ymd = (d) => ymdInSeoul(d);
 
 function remainingBudget(maxBudget, spend) {
   if (maxBudget == null) return null;
@@ -25,7 +29,7 @@ function forecast(dailySeries, horizonDays) {
   return { slope, fitStart: at(0), fitEnd: at(n - 1), future };
 }
 
-function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId = "" }) {
+function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId = "", tokenFilter = null, strictModels = false }) {
   const teamName = new Map(teams.map((t) => [t.team_id, t.team_alias || t.team_id.slice(0, 8)]));
   const selectedTeam = teamId ? teams.find((t) => t.team_id === teamId) || null : null;
   const meta = new Map(keyList.map((k) => [k.token, {
@@ -34,9 +38,11 @@ function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId =
     team: k.team_id ? teamName.get(k.team_id) || "(삭제된 그룹)" : null,
     budget: k.max_budget ?? null,
   }]));
-  const allowedTokens = teamId
-    ? new Set(keyList.filter((k) => k.team_id === teamId).map((k) => k.token))
-    : null;
+  const allowedTokens = tokenFilter
+    ? tokenFilter
+    : teamId
+      ? new Set(keyList.filter((k) => k.team_id === teamId).map((k) => k.token))
+      : null;
 
   const byDate = new Map();
   const perKey = new Map();
@@ -59,7 +65,7 @@ function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId =
         for (const [m, spend] of exactModels.entries()) {
           perModel.set(m, (perModel.get(m) || 0) + spend);
         }
-      } else {
+      } else if (!strictModels) {
         const totalSpend = Number(r.metrics?.spend) || 0;
         const ratio = totalSpend > 0 ? cur.spend / totalSpend : 0;
         for (const [m, v] of Object.entries(r.breakdown?.models || {})) {
@@ -152,6 +158,11 @@ function buildAnalytics({ results, keyList, teams, start, end, horizon, teamId =
       team_id: selectedTeam?.team_id || null,
       team: selectedTeam ? (selectedTeam.team_alias || selectedTeam.team_id.slice(0, 8)) : null,
     },
+    soonestTeam: tokenFilter ? null : soonestTeam({
+      teams,
+      teamStats: [...perTeam.values()],
+      days: dates.length,
+    }),
   };
 }
 

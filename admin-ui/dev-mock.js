@@ -269,6 +269,25 @@ async function litellm(p, method = "GET", body) {
 }
 
 app.get("/health", (_req, res) => res.json({ status: "ok", mock: true }));
+app.get("/api/me", (_req, res) => {
+  res.json({ email: "teacher@school.kr", name: "teacher", role: "admin", key_aliases: [] });
+});
+const mockUsers = [];
+app.get("/api/users", (_req, res) => res.json({ users: mockUsers }));
+app.post("/api/users", (req, res) => {
+  const user = {
+    email: String(req.body.email || "").toLowerCase(),
+    name: req.body.name || req.body.email,
+    key_aliases: req.body.key_aliases || [],
+  };
+  mockUsers.push(user);
+  res.json(user);
+});
+app.post("/api/users/delete", (req, res) => {
+  const i = mockUsers.findIndex((u) => u.email === String(req.body.email || "").toLowerCase());
+  if (i >= 0) mockUsers.splice(i, 1);
+  res.json({ ok: true });
+});
 app.get("/api/models", async (_req, res) => {
   res.json({ models: (await litellm("/v1/models")).data.map((m) => m.id) });
 });

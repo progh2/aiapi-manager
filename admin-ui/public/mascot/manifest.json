@@ -1,0 +1,38 @@
+{
+  "name": "엘피",
+  "role": "API 숲 관리 요정",
+  "poses": {
+    "welcome": {
+      "file": "elf-welcome.png",
+      "line": "안녕! AI API 숲에 온 걸 환영해요. 구글 계정으로 로그인하면 돼요!"
+    },
+    "dashboard": {
+      "file": "elf-dashboard.png",
+      "line": "사용량을 꼼꼼히 살펴볼게요. 예산이 임박하면 미리 알려드릴게요!"
+    },
+    "keys": {
+      "file": "elf-keys.png",
+      "line": "키는 한 번만 보여줘요. 꼭 안전한 곳에 보관하세요!"
+    },
+    "groups": {
+      "file": "elf-groups.png",
+      "line": "반·조별로 묶으면 예산을 함께 관리하기 쉬워져요."
+    },
+    "usage": {
+      "file": "elf-usage.png",
+      "line": "할당받은 키와 사용량을 여기서 확인하세요. 아껴 쓰면 칭찬해 드릴게요!"
+    },
+    "users": {
+      "file": "elf-users.png",
+      "line": "등록된 구글 계정만 들어올 수 있어요. 새 사용자는 여기서 추가하세요."
+    },
+    "warn": {
+      "file": "elf-warn.png",
+      "line": "앗, 문제가 생겼어요. 아래 안내를 확인해 주세요."
+    },
+    "success": {
+      "file": "elf-success.png",
+      "line": "완료! 깔끔하게 처리했어요. 수고하셨어요!"
+    }
+  }
+}

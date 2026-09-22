@@ -9,6 +9,8 @@ const {
   resolveIssueModels,
   teamModelsFor,
 } = require("./model-allowlist");
+const { checkAlias } = require("./aliases");
+const DEFAULT_MODELS = ["gpt-4o-mini"];
 
 const MAX_BULK = 500;
 
@@ -102,18 +104,43 @@ async function assignClassBudgets(body, { litellm }) {
 
   try {
     const models = resolveIssueModels(params.models || body.models, teamModels);
-    if (models.length) params.models = models;
-    else delete params.models;
+    params.models = models.length ? models : DEFAULT_MODELS.slice();
   } catch (e) {
     if (!e.status) e.status = 400;
     throw e;
   }
 
+  if (params.max_budget == null || !Number.isFinite(Number(params.max_budget)) || Number(params.max_budget) < 0) {
+    const err = new Error("예산(USD)이 필요합니다");
+    err.status = 400;
+    throw err;
+  }
+
+  const existing = new Set();
+  for (let page = 1; page <= 100; page++) {
+    const listed = await litellm(`/key/list?return_full_object=true&size=100&page=${page}`);
+    for (const key of listed.keys || []) {
+      if (key && key.key_alias) existing.add(key.key_alias);
+    }
+    if (page >= (listed.total_pages || 1)) break;
+  }
+
   const results = [];
   for (const s of parsed.students) {
+    const slot = checkAlias(existing, s.alias);
+    if (slot.error) {
+      results.push({
+        alias: slot.alias,
+        student_id: s.student_id,
+        name: s.name,
+        error: slot.error,
+        skipped: Boolean(slot.skipped),
+      });
+      continue;
+    }
     try {
       const data = await litellm("/key/generate", "POST", {
-        key_alias: s.alias,
+        key_alias: slot.alias,
         team_id: teamId || undefined,
         ...params,
       });
@@ -126,6 +153,7 @@ async function assignClassBudgets(body, { litellm }) {
         duration: params.duration || null,
         expires: data.expires || null,
       });
+      existing.add(slot.alias);
     } catch (e) {
       results.push({
         alias: s.alias,

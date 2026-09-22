@@ -280,5 +280,7 @@ NAS/PC에서 키·조 UI까지 재확인하는 순서는 [docs/nas-pc-recheck.md
 
 - 실제 OpenAI 키와 마스터 키는 `.env`에만 존재하며 git에 커밋하지 않는다 (`.gitignore` 처리됨).
 - Postgres는 외부 포트를 열지 않고 도커 내부 네트워크로만 접근한다.
-- admin-ui는 Firebase ID 토큰을 서버에서 검증하고 `ADMIN_EMAILS` 목록에 있는 계정만 허용한다.
+- admin-ui는 Firebase ID 토큰을 서버에서 검증한다. `ADMIN_EMAILS`는 관리자이고, 그 외는 `admin-ui/data/users.json`에 등록된 구글 계정만 로그인할 수 있다. 등록 사용자는 연결된 키의 사용량만 본다.
+- 키 발급에는 예산이 필요하다. 모델을 비우면 `gpt-4o-mini`만 연다. 이미 있는 별칭은 다시 만들지 않는다.
+- 사용량 날짜는 한국 시간이다. 학급 예산 소진 예상은 학급을 합치지 않고 가장 빨리 끝나는 학급을 보여 준다.
 - 전체 시스템은 학교 내부망 전용을 전제로 한다. 외부 노출이 필요해지면 Cloudflare Tunnel 등을 앞단에 둘 것.

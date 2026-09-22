@@ -10,6 +10,9 @@ const el = (name, attrs = {}) => {
   return n;
 };
 const shortDate = (iso) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[c]));
 
 // 공용 툴팁 (차트마다 만들지 않고 하나를 재사용)
 let tip;
@@ -83,7 +86,7 @@ export function dailyBarChart(node, dates, values) {
     // 히트 영역은 막대보다 넓게
     const hit = el("rect", { x: pad.l + (plotW / values.length) * i, y: pad.t, width: plotW / values.length, height: base - pad.t, fill: "transparent" });
     hit.addEventListener("mousemove", (ev) => showTip(
-      `<b>${dates[i]}</b><br>지출 ${money(v)}`, ev.clientX, ev.clientY));
+      `<b>${esc(dates[i])}</b><br>지출 ${money(v)}`, ev.clientX, ev.clientY));
     hit.addEventListener("mouseleave", hideTip);
     svg.appendChild(hit);
   });
@@ -159,7 +162,7 @@ export function cumulativeChart(node, dates, cumulative, futureDates, fc, budget
     const v = isFuture ? future[i - dates.length] : cumulative[i];
     cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", 1);
     dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(v)); dot.setAttribute("opacity", 1);
-    showTip(`<b>${allDates[i]}</b><br>누적 ${money(v)}${isFuture ? " <i>(예측)</i>" : ""}`, ev.clientX, ev.clientY);
+    showTip(`<b>${esc(allDates[i])}</b><br>누적 ${money(v)}${isFuture ? " <i>(예측)</i>" : ""}`, ev.clientX, ev.clientY);
   });
   overlay.addEventListener("mouseleave", () => {
     hideTip(); cross.setAttribute("opacity", 0); dot.setAttribute("opacity", 0);
@@ -220,7 +223,7 @@ export function rankBarChart(node, items, { valueKey = "spend", labelKey = "alia
 
     const hit = el("rect", { x: 0, y: i * rowH, width: w, height: rowH, fill: "transparent" });
     hit.addEventListener("mousemove", (ev) => showTip(
-      `<b>${d[labelKey]}</b>${d.team ? ` · ${d.team}` : ""}<br>지출 ${spendTxt}` +
+      `<b>${esc(d[labelKey])}</b>${d.team ? ` · ${esc(d.team)}` : ""}<br>지출 ${spendTxt}` +
       (d.budget ? `<br>예산 ${money(d.budget)} (${((d[valueKey] / d.budget) * 100).toFixed(0)}%)` : "") +
       (hasRemaining(d) ? `<br>${remainingTipLine(d.remaining)}` : "") +
       (d.requests != null ? `<br>요청 ${d.requests.toLocaleString()}회` : ""), ev.clientX, ev.clientY));
