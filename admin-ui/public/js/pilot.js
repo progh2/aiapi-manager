@@ -94,7 +94,7 @@ export async function startPilot({ api, me, auth, proxyUrl, scene }) {
       scene.setData({
         teams: teamIds.map((id) => {
           const k = keys.find((x) => x.team_id === id);
-          return { id, name: k.team_alias || "학급", ratio: null, session: "always", locked: false, keys: keys.filter((x) => x.team_id === id).length };
+          return { id, name: k.team_alias || "학급", ratio: null, session: "always", locked: false, keys: keys.filter((x) => x.team_id === id).length, note: `내 학급 · 내 키 ${keys.filter((x) => x.team_id === id).length}개` };
         }),
         keys: keys.map((k) => ({ id: k.key_alias, team: k.team_id, state: keyState(k).code, camp: false })),
         engines: [],

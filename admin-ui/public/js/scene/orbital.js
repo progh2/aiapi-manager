@@ -28,7 +28,7 @@ const PRESETS = {
   engines: { dist: 0.66, polar: 98, spin: 0.022, target: "engines" },
   crew: { dist: 0.95, polar: 66, spin: 0.015, target: "core" },
   log: { dist: 1.2, polar: 32, spin: 0.01, target: "core" },
-  pilot: { dist: 0.62, polar: 64, spin: 0.03, target: "core" },
+  pilot: { dist: 1.0, polar: 62, spin: 0.03, target: "core", lift: -4 },
 };
 
 function glowTexture(inner = "rgba(255,255,255,1)", outer = "rgba(255,255,255,0)") {
@@ -306,7 +306,10 @@ export function createOrbital({ canvas, labelsEl, quality = "high", reduceMotion
       p.hazard.material.opacity = t.locked ? 0.9 : 0;
       const pct = t.ratio == null ? "예산 없음" : `${Math.round(t.ratio * 100)}%`;
       const sess = t.locked ? '<span class="lk">봉쇄</span>' : t.session === "open" ? "수업 중" : t.session === "closed" ? "수업 외" : "항상";
-      p.label.innerHTML = `${escapeHtml(t.name)}<small>${pct} · ${sess} · 키 ${t.keys}</small>`;
+      // note 가 있으면(학생 화면) 예산·시간 대신 그 글을 쓴다.
+      p.label.innerHTML = t.note
+        ? `${escapeHtml(t.name)}<small>${escapeHtml(t.note)}</small>`
+        : `${escapeHtml(t.name)}<small>${pct} · ${sess} · 키 ${t.keys}</small>`;
       p.label.classList.toggle("dim", t.session === "closed" && !t.locked);
     });
     fitRadius = Math.max(24, 13 + Math.max(0, teams.length - 1) * 6.2 + 6);

@@ -123,6 +123,20 @@ docker compose up -d --build
 
 ## 관리 화면 둘러보기 (관제 함교)
 
+![개요 — 3D 궤도 관제도와 함선 상태·경보·예측](docs/screenshots/01-bridge.webp)
+
+<details><summary>다른 스테이션 화면 보기</summary>
+
+| | |
+|---|---|
+| ![사용량](docs/screenshots/02-telemetry.webp) | ![키 관리와 상세 서랍](docs/screenshots/03-keys-drawer.webp) |
+| ![학급/조와 봉쇄](docs/screenshots/04-classes.webp) | ![키 발급](docs/screenshots/05-launch.webp) |
+| ![공급자 키·묶음](docs/screenshots/06-engines.webp) | ![기록 — 실시간 호출과 실패 이유](docs/screenshots/07-log.webp) |
+| ![등록 사용자 조종석](docs/screenshots/08-student.webp) | |
+
+화면은 `npm run mock` 의 시연 데이터다.
+</details>
+
 로그인하면 부팅 화면 뒤에 3D 궤도 관제도와 스테이션 레일이 뜬다. 레일 버튼이나 숫자 키 `1`~`8` 로 옮겨 다닌다.
 주소 끝의 `#keys` 같은 해시로 새로고침해도 그 자리를 지킨다.
 
