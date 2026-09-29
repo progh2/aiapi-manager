@@ -5,6 +5,9 @@ const os = require("os");
 const path = require("path");
 const { AssistantStore, isPrivateHost } = require("./store");
 
+// 시험용 가짜 키. 비밀 탐지기(GitGuardian 등)가 진짜 키로 오인하지 않도록 뜻 없는 글자로 만든다.
+const fakeKey = (tail) => `sk-${"x".repeat(12)}${tail}`;
+
 function tmpFile() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "elfy-"));
   return path.join(dir, "assistant.json");
@@ -21,28 +24,28 @@ test("처음에는 꺼져 있고 준비되지 않았다", () => {
 test("API 키는 응답에 싣지 않고 끝 네 글자만 보여 준다", () => {
   const file = tmpFile();
   const s = new AssistantStore(file);
-  const v = s.update({ enabled: true, provider: "openai", api_key: "sk-test-abcdefgh1234", model: "gpt-4.1-mini" });
+  const v = s.update({ enabled: true, provider: "openai", api_key: fakeKey("1234"), model: "gpt-4.1-mini" });
   assert.equal(v.api_key, undefined);
   assert.equal(v.api_key_hint, "••••1234");
   assert.equal(v.ready, true);
   assert.equal(v.external, true);
   const raw = JSON.parse(fs.readFileSync(file, "utf8"));
-  assert.equal(raw.api_key, "sk-test-abcdefgh1234");
+  assert.equal(raw.api_key, fakeKey("1234"));
   if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 });
 
 test("빈 api_key 는 저장된 키를 지우지 않고, clear_api_key 는 지운다", () => {
   const s = new AssistantStore(tmpFile());
-  s.update({ provider: "openai", api_key: "sk-keep-00001111" });
+  s.update({ provider: "openai", api_key: fakeKey("0001") });
   s.update({ api_key: "", model: "gpt-4o-mini" });
-  assert.equal(s.get().api_key, "sk-keep-00001111");
+  assert.equal(s.get().api_key, fakeKey("0001"));
   s.update({ clear_api_key: true });
   assert.equal(s.get().api_key, "");
 });
 
 test("공급자를 바꾸면 이전 API 키를 버린다", () => {
   const s = new AssistantStore(tmpFile());
-  s.update({ provider: "openai", api_key: "sk-openai-99998888" });
+  s.update({ provider: "openai", api_key: fakeKey("0002") });
   s.update({ provider: "ollama", base_url: "http://192.168.0.20:11434/" });
   assert.equal(s.get().api_key, "");
   assert.equal(s.get().base_url, "http://192.168.0.20:11434");
@@ -93,7 +96,7 @@ test("프록시 방식은 비서 전용 키와 모델이 있어야 준비된다"
   const s = new AssistantStore(tmpFile());
   s.update({ enabled: true, mode: "proxy", proxy_model: "gpt-4o-mini" });
   assert.equal(s.publicView().ready, false);
-  s.setProxyKey("sk-assistant-1234");
+  s.setProxyKey(fakeKey("1234"));
   const v = s.publicView();
   assert.equal(v.ready, true);
   assert.equal(v.proxy_key, undefined);

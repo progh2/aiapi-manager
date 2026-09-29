@@ -20,6 +20,9 @@ function fakeServer(handler) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve({ server, seen, base: `http://127.0.0.1:${server.address().port}` })));
 }
 
+// 시험용 가짜 키. 비밀 탐지기가 진짜 키로 오인하지 않도록 뜻 없는 글자로 만든다.
+const fakeKey = (tail) => `sk-${"x".repeat(12)}${tail}`;
+
 const TOOLS = [{ name: "find_keys", description: "키 찾기", parameters: { type: "object", properties: { state: { type: "string" } } } }];
 
 test("OpenAI 방식: 도구 명세를 보내고 도구 호출을 읽는다", async (t) => {
@@ -33,12 +36,12 @@ test("OpenAI 방식: 도구 명세를 보내고 도구 호출을 읽는다", asy
     }
   });
   t.after(() => f.server.close());
-  const conn = { kind: "openai", flavor: "compatible", base: `${f.base}/v1`, apiKey: "sk-test-secret", model: "gpt-4.1-mini" };
+  const conn = { kind: "openai", flavor: "compatible", base: `${f.base}/v1`, apiKey: fakeKey("0003"), model: "gpt-4.1-mini" };
   const out = await llm.chat(conn, { messages: [{ role: "user", content: "소진 키?" }], tools: TOOLS, maxTokens: 500 });
   assert.deepEqual(out.toolCalls, [{ id: "call_1", name: "find_keys", arguments: { state: "over" } }]);
   assert.deepEqual(out.usage, { prompt_tokens: 120, completion_tokens: 15 });
   const req = f.seen[0];
-  assert.equal(req.headers.authorization, "Bearer sk-test-secret");
+  assert.equal(req.headers.authorization, `Bearer ${fakeKey("0003")}`);
   assert.equal(req.body.tools[0].type, "function");
   assert.equal(req.body.tools[0].function.name, "find_keys");
   assert.equal(req.body.tool_choice, "auto");
@@ -128,13 +131,13 @@ test("도구를 지원하지 않는 모델 오류를 알아본다", async (t) =>
 
 test("인증 오류·없는 모델은 한국어로 알리고 키를 드러내지 않는다", async (t) => {
   const f = await fakeServer((req) => (req.url.includes("chat")
-    ? { status: 401, json: { error: { message: "Incorrect API key provided: sk-live-abcdefghijk" } } }
+    ? { status: 401, json: { error: { message: `Incorrect API key provided: ${fakeKey("live")}` } } }
     : { status: 404, json: { error: "model 'qwen3:8b' not found" } }));
   t.after(() => f.server.close());
-  const conn = { kind: "openai", flavor: "compatible", base: `${f.base}/v1`, apiKey: "sk-live-abcdefghijk", model: "m" };
+  const conn = { kind: "openai", flavor: "compatible", base: `${f.base}/v1`, apiKey: fakeKey("live"), model: "m" };
   await assert.rejects(llm.chat(conn, { messages: [{ role: "user", content: "x" }] }), (e) => {
     assert.equal(e.code, "auth");
-    assert.ok(!e.message.includes("abcdefghijk"));
+    assert.ok(!e.message.includes("xxxxxxxxxxxx"));
     return true;
   });
   const oc = { kind: "ollama", base: f.base, model: "qwen3:8b" };
