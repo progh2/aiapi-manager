@@ -469,20 +469,20 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "aiapi-mock-"));
 seed(dataDir);
 
 lite.listen(LITE_PORT, "127.0.0.1", () => {
-  // 실제 server.js 를 띄운다. firebase-admin 만 스텁이다.
-  const fbPath = require.resolve("firebase-admin");
-  require.cache[fbPath] = {
-    id: fbPath, filename: fbPath, loaded: true,
-    exports: {
-      initializeApp() {},
-      auth: () => ({
-        async verifyIdToken(token) {
-          const email = String(token || "").startsWith("mock:") ? token.slice(5) : ADMIN;
-          return { email, email_verified: true };
-        },
-      }),
-    },
+  // 실제 server.js 를 띄운다. firebase-admin 의 app·auth 모듈만 스텁이다.
+  const stub = (id, exports) => {
+    const file = require.resolve(id);
+    require.cache[file] = { id: file, filename: file, loaded: true, exports };
   };
+  stub("firebase-admin/app", { initializeApp() {} });
+  stub("firebase-admin/auth", {
+    getAuth: () => ({
+      async verifyIdToken(token) {
+        const email = String(token || "").startsWith("mock:") ? token.slice(5) : ADMIN;
+        return { email, email_verified: true };
+      },
+    }),
+  });
   Object.assign(process.env, {
     PORT: String(PORT),
     FIREBASE_PROJECT_ID: "aiapi-mock",

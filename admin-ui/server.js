@@ -3,7 +3,9 @@
 // LITELLM_MASTER_KEY는 이 서버에만 존재하며 브라우저로 나가지 않는다.
 const express = require("express");
 const path = require("path");
-const admin = require("firebase-admin");
+// firebase-admin 14 에는 네임스페이스 API(admin.auth)가 없다. 모듈 API 를 쓴다.
+const { initializeApp } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
 const { UsersStore } = require("./lib/users-store");
 const { checkAlias } = require("./lib/aliases");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
@@ -44,7 +46,7 @@ if (!FIREBASE_PROJECT_ID || !LITELLM_MASTER_KEY) {
 }
 
 // ID 토큰 검증만 하므로 서비스 계정 키 없이 projectId만으로 초기화
-admin.initializeApp({ projectId: FIREBASE_PROJECT_ID });
+initializeApp({ projectId: FIREBASE_PROJECT_ID });
 
 const adminEmails = new Set(
   ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
@@ -101,7 +103,7 @@ async function verifyToken(req) {
   const token = (req.headers.authorization || "").replace(/^Bearer /, "");
   if (!token) return null;
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    const decoded = await getAuth().verifyIdToken(token);
     if (!decoded.email_verified) return null;
     return decoded;
   } catch {
