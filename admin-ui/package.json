@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test lib/*.test.js",
+    "test": "node --test lib/*.test.js lib/assistant/*.test.js",
     "mock": "node dev-mock.js"
   },
   "dependencies": {
