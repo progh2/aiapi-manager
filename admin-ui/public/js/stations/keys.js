@@ -186,7 +186,7 @@ export default {
       const st = keyState(k, now);
       const tok = esc(k.token || "");
       const sel = this.selected.has(k.token);
-      const camp = isCamp(k) ? ' <span class="tag violet">캠프</span>' : "";
+      const camp = isCamp(k) ? ' <span class="tag violet">캠프</span>' : k.metadata && k.metadata.aiapi_system ? ' <span class="tag info">엘피 전용</span>' : "";
       const exp = !k.expires ? '<span class="muted">무기한</span>'
         : new Date(k.expires).getTime() < now ? `<span class="muted">${fmtDate(k.expires)}</span>`
           : isExpiringSoon(k, 7, now) ? `${fmtDate(k.expires)} <span class="tag warn">${esc(relTime(k.expires))}</span>` : fmtDate(k.expires);

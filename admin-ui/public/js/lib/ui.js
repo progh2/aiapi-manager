@@ -1,5 +1,6 @@
 // 토스트·대화상자·확인창·키 공개 창·서랍·명령 팔레트.
 import { $, esc, icon, copyText } from "./util.js";
+import * as sfx from "./sfx.js";
 
 const root = () => $("#overlay-root");
 const stack = [];
@@ -22,6 +23,11 @@ export function toast(message, { tone = "info", title = "", timeout } = {}) {
   // 오류는 사용자가 닫을 때까지 둔다. 놓치지 않게.
   const ms = timeout ?? (tone === "crit" ? 0 : tone === "warn" ? 7000 : 4200);
   if (ms) setTimeout(close, ms);
+  if (tone === "crit") sfx.play("error");
+  else if (tone === "warn") sfx.play("warn");
+  else if (tone === "good") sfx.play("ok");
+  // 엘피가 표정으로 반응한다.
+  window.dispatchEvent(new CustomEvent("aiapi:toast", { detail: { tone } }));
   return close;
 }
 
@@ -74,6 +80,7 @@ function mount(node, { scrim = true, onClose, dismissable = true } = {}) {
     close(result) {
       if (closed) return;
       closed = true;
+      sfx.play("close");
       document.removeEventListener("keydown", onKey, true);
       node.remove();
       if (scrimEl) scrimEl.remove();
@@ -84,6 +91,7 @@ function mount(node, { scrim = true, onClose, dismissable = true } = {}) {
     },
   };
   stack.push(handle);
+  sfx.play("open");
   requestAnimationFrame(() => {
     const auto = node.querySelector("[autofocus]") || focusables(node)[0];
     if (auto) auto.focus();

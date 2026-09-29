@@ -1,6 +1,6 @@
 // 화면 전체가 같이 쓰는 데이터와 주기적 갱신. 스테이션은 on() 으로 바뀐 조각만 다시 그린다.
 import {
-  keyState, isExpiringSoon, isCamp, isLocked, isRetired, budgetRatio, sessionState, money, todayYmd, isExpired,
+  keyState, isExpiringSoon, isCamp, isLocked, isRetired, isSystemKey, budgetRatio, sessionState, money, todayYmd, isExpired,
 } from "./util.js";
 
 const listeners = new Map();
@@ -195,7 +195,7 @@ export function keyCounts() {
   const out = { total: 0, active: 0, blocked: 0, expired: 0, over: 0, warn: 0, expiring: 0, camp: 0, campToday: 0 };
   const today = todayYmd();
   for (const k of state.keys) {
-    if (isRetired(k)) continue;
+    if (isRetired(k) || isSystemKey(k)) continue;
     out.total += 1;
     const st = keyState(k, now).code;
     if (st === "active" || st === "warn") out.active += 1;

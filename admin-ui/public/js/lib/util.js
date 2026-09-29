@@ -194,6 +194,8 @@ export function isExpiringSoon(k, days = 7, now = Date.now()) {
 export const isCamp = (k) => Boolean(k && k.metadata && k.metadata.aiapi_camp);
 export const isLocked = (k) => Boolean(k && k.metadata && k.metadata.aiapi_lockdown);
 export const isRetired = (k) => /-폐기(-\d+)?$/.test(String((k && k.key_alias) || ""));
+// AI 엘피 "프록시 방식"이 쓰는 비서 전용 키. 학생 키 개수·3D 에서 뺀다.
+export const isSystemKey = (k) => Boolean(k && k.metadata && k.metadata.aiapi_system);
 
 export function budgetRatio(spend, max) {
   if (max == null || !Number.isFinite(Number(max)) || Number(max) <= 0) return null;
