@@ -17,9 +17,27 @@ litellm_settings:
   callbacks: aiapi_policy.proxy_handler_instance
 
 # 묶음은 같은 model_name 배포의 weight 로 나눈다. simple-shuffle 이 그 weight 를 읽는다.
-# 배포가 하나인 모델은 고를 대상이 하나다.
+# 시간 초과, 429, 5xx 는 같은 이름의 다른 배포로 한 번 더 시도한다.
+# 인증 실패와 잘못된 요청은 다른 키로 넘기지 않는다.
 router_settings:
   routing_strategy: simple-shuffle
+  num_retries: 1
+  allowed_fails: 1
+  cooldown_time: 30
+  retry_policy:
+    TimeoutErrorRetries: 1
+    RateLimitErrorRetries: 1
+    InternalServerErrorRetries: 1
+    ServiceUnavailableErrorRetries: 1
+    AuthenticationErrorRetries: 0
+    BadRequestErrorRetries: 0
+    ContentPolicyViolationErrorRetries: 0
+    NotFoundErrorRetries: 0
+    DefaultRetries: 0
+  allowed_fails_policy:
+    RateLimitErrorAllowedFails: 0
+    AuthenticationErrorAllowedFails: 0
+    TimeoutErrorAllowedFails: 1
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

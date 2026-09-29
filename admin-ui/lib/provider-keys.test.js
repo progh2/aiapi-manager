@@ -8,7 +8,9 @@ const {
   attachProvider,
   registerProvider,
   registerPool,
+  updateProvider,
   deleteProvider,
+  matchPoolCalls,
   toPublic,
   spendFor,
 } = require("./provider-keys");
@@ -231,6 +233,104 @@ describe("registerPool", () => {
     assert.deepEqual(deleted.sort(), ["d1", "d2"]);
     assert.equal(store.get("pool_1"), null);
     assert.ok(store.get("pk_test"));
+  });
+});
+
+describe("updateProvider", () => {
+  it("비밀 키를 비우면 유지하고 금액과 새 모델을 반영한다", async () => {
+    const store = tempStore();
+    store.add(sampleRecord());
+    const calls = [];
+    const litellm = async (p, method, body) => {
+      calls.push({ p, body });
+      if (p === "/model/new") return { model_id: "mid-new" };
+      return {};
+    };
+    const pub = await updateProvider({
+      id: "pk_test",
+      label: "학교 OpenAI A2",
+      api_key: "",
+      max_budget: 40,
+      budget_duration: "7d",
+      models: ["gpt-4o-mini", "gpt-4o"],
+    }, {
+      litellm,
+      store,
+      keys: [{ models: ["openai-a/gpt-4o-mini"], spend: 4, metadata: {} }],
+    });
+    assert.equal(pub.remaining, 36);
+    assert.equal(pub.label, "학교 OpenAI A2");
+    assert.equal(JSON.stringify(pub).includes("sk-secret"), false);
+    assert.equal(calls[0].p, "/user/update");
+    assert.equal(calls[0].body.max_budget, 40);
+    assert.equal(calls.some((c) => c.p === "/model/update"), false);
+    assert.equal(calls.find((c) => c.p === "/model/new").body.litellm_params.api_key, "sk-secret-1234");
+    assert.equal(store.get("pk_test").api_key, "sk-secret-1234");
+  });
+
+  it("비밀 키를 바꾸면 묶음 배포도 갱신하고, 쓰는 모델은 빼지 않는다", async () => {
+    const store = tempStore();
+    store.add(sampleRecord());
+    store.add({
+      id: "pool_1",
+      kind: "pool",
+      slug: "mix",
+      label: "묶음",
+      provider: "pool",
+      api_key: "",
+      max_budget: 10,
+      litellm_user_id: "pool:mix",
+      models: [{ name: "gpt-4o-mini", call_name: "mix/gpt-4o-mini", model_id: "d1" }],
+      members: [{ provider_key_id: "pk_test", label: "A", model: "gpt-4o-mini", weight: 2, model_id: "d9" }],
+    });
+    const calls = [];
+    const litellm = async (p, method, body) => {
+      calls.push({ p, body });
+      return {};
+    };
+    await assert.rejects(
+      () => updateProvider({
+        id: "pk_test",
+        label: "A",
+        api_key: "sk-rotated-1",
+        max_budget: 20,
+        budget_duration: "30d",
+        models: ["gpt-4o"],
+      }, { litellm, store, keys: [{ models: ["openai-a/gpt-4o-mini"], spend: 0, metadata: {} }] }),
+      /학생 키/
+    );
+    await updateProvider({
+      id: "pk_test",
+      label: "A",
+      api_key: "sk-rotated-1",
+      max_budget: 20,
+      budget_duration: "30d",
+      models: ["gpt-4o-mini"],
+    }, { litellm, store, keys: [] });
+    const updates = calls.filter((c) => c.p === "/model/update");
+    assert.equal(updates.length, 2);
+    assert.equal(updates[1].body.model_id, "d9");
+    assert.equal(updates[1].body.litellm_params.api_key, "sk-rotated-1");
+    assert.equal(updates[1].body.litellm_params.weight, 2);
+    assert.equal(store.get("pk_test").api_key, "sk-rotated-1");
+  });
+});
+
+describe("matchPoolCalls", () => {
+  it("배포 id 로 멤버를 찾고 다른 모델 호출은 뺀다", () => {
+    const calls = matchPoolCalls({
+      models: [{ call_name: "mix/gpt-4o-mini" }],
+      members: [
+        { model_id: "d1", label: "A", model: "gpt-4o-mini", weight: 2 },
+        { model_id: "d2", label: "B", model: "gpt-4o-mini", weight: 1 },
+      ],
+    }, [
+      { model: "mix/gpt-4o-mini", model_id: "d2", spend: 0.1, startTime: "2026-09-29T02:00:00Z" },
+      { model: "gpt-4o-mini", model_id: "other", spend: 9, startTime: "2026-09-29T03:00:00Z" },
+      { model: "mix/gpt-4o-mini", model_id: "d1", spend: 0.2, startTime: "2026-09-29T01:00:00Z" },
+    ]);
+    assert.deepEqual(calls.map((c) => c.member), ["B", "A"]);
+    assert.equal(calls[0].weight, 1);
   });
 });
 

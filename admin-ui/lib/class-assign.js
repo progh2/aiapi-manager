@@ -10,6 +10,7 @@ const {
   teamModelsFor,
 } = require("./model-allowlist");
 const { checkAlias } = require("./aliases");
+const { applyIssueSchedule } = require("./team-schedule");
 const DEFAULT_MODELS = ["gpt-4o-mini"];
 
 const MAX_BULK = 500;
@@ -48,6 +49,7 @@ async function resolveTeam(litellm, team, teamBudget, extra = {}) {
   if (teamBudget !== undefined && teamBudget !== "") payload.max_budget = Number(teamBudget);
   const models = normalizeModels(extra.models);
   if (models.length) payload.models = models;
+  if (extra.metadata) payload.metadata = extra.metadata;
   const created = await litellm("/team/new", "POST", payload);
   return {
     team_id: created.team_id,
@@ -91,10 +93,12 @@ async function assignClassBudgets(body, { litellm }) {
   let teamCreated = false;
   let teamAlias = null;
   let teamModels = [];
+  const requestedSchedule = (body.metadata && body.metadata.aiapi_schedule) || [];
   const teamName = String(body.team || "").trim();
   if (!teamId && teamName) {
     const resolved = await resolveTeam(litellm, teamName, body.team_budget, {
       models: body.models,
+      metadata: requestedSchedule.length ? { aiapi_schedule: requestedSchedule } : undefined,
     });
     teamId = resolved.team_id;
     teamCreated = resolved.created;
@@ -110,6 +114,16 @@ async function assignClassBudgets(body, { litellm }) {
   } catch (e) {
     if (!e.status) e.status = 400;
     throw e;
+  }
+
+  if (teamId && (body.metadata || params.metadata)) {
+    const listing = await litellm("/team/list", "GET");
+    const teams = Array.isArray(listing) ? listing : listing.teams || [];
+    const teamRecord = teams.find((t) => t.team_id === teamId) || null;
+    params.metadata = applyIssueSchedule(body.metadata || params.metadata || {}, {
+      team: teamRecord,
+      teamCreated,
+    });
   }
 
   if (params.max_budget == null || !Number.isFinite(Number(params.max_budget)) || Number(params.max_budget) < 0) {

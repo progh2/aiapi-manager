@@ -9,7 +9,9 @@ const { checkAlias } = require("./lib/aliases");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
 const { adjustKey, keyDetail, findKey } = require("./lib/key-adjust");
-const { attachProvider, ProviderKeyStore, envProvider, toPublic, spendFor, registerProvider, registerPool, deleteProvider } = require("./lib/provider-keys");
+const { attachProvider, ProviderKeyStore, envProvider, toPublic, spendFor, registerProvider, registerPool, updateProvider, deleteProvider, matchPoolCalls } = require("./lib/provider-keys");
+const { applyIssueSchedule, keysFollowingTeam, teamScheduleMetadata, keepCampSchedule } = require("./lib/team-schedule");
+const { reissueKey } = require("./lib/key-reissue");
 const { PROVIDERS, listProviderModels } = require("./lib/provider-catalog");
 const { resolveIssueModels, teamModelsFor } = require("./lib/model-allowlist");
 const { issueCampKeys, campIssuePolicy, revokeCampKeys, todayYmd } = require("./lib/camp-keys");
@@ -196,18 +198,38 @@ app.get("/api/teams", requireAdmin, async (req, res) => {
   }
 });
 
+async function loadTeam(teamId) {
+  if (!teamId) return null;
+  const teams = await listTeams();
+  return teams.find((team) => team.team_id === teamId) || null;
+}
+
+async function syncTeamSchedule(teamId, schedule) {
+  const keys = keysFollowingTeam(await fetchAllKeys(), teamId);
+  let updated = 0;
+  for (const key of keys) {
+    if (!key.token) continue;
+    const metadata = { ...(key.metadata || {}), aiapi_schedule: schedule, aiapi_schedule_from: "team" };
+    await litellm("/key/update", "POST", { key: key.token, metadata });
+    updated += 1;
+  }
+  return updated;
+}
+
 app.post("/api/teams", requireAdmin, async (req, res) => {
   if (!req.body.alias) return res.status(400).json({ error: "그룹 이름이 필요합니다" });
   try {
     const prepared = attachProvider(req.body, providerStore, { bindUser: false });
+    const schedule = teamScheduleMetadata(null, req.body.schedule || []).aiapi_schedule;
     const data = await litellm("/team/new", "POST", {
       team_alias: prepared.alias,
       ...keyParams(prepared),
+      metadata: { aiapi_schedule: schedule },
     });
     console.log(`${req.adminEmail} 이(가) 그룹 생성: ${req.body.alias}`);
     res.json(data);
   } catch (e) {
-    res.status(502).json({ error: e.message });
+    res.status(e.status || 502).json({ error: e.message });
   }
 });
 
@@ -215,13 +237,18 @@ app.post("/api/teams/update", requireAdmin, async (req, res) => {
   if (!req.body.team_id) return res.status(400).json({ error: "team_id가 필요합니다" });
   try {
     const prepared = attachProvider(req.body, providerStore, { bindUser: false });
-    res.json(await litellm("/team/update", "POST", {
+    const existing = await loadTeam(req.body.team_id);
+    const schedule = teamScheduleMetadata(existing && existing.metadata, req.body.schedule || []).aiapi_schedule;
+    const data = await litellm("/team/update", "POST", {
       team_id: prepared.team_id,
       ...keyParams(prepared, { clearEmpty: true }),
-    }));
-    console.log(`${req.adminEmail} 이(가) 그룹 수정: ${req.body.team_id}`);
+      metadata: teamScheduleMetadata(existing && existing.metadata, schedule),
+    });
+    const updated = await syncTeamSchedule(req.body.team_id, schedule);
+    console.log(`${req.adminEmail} 이(가) 그룹 수정: ${req.body.team_id} (시간표 키 ${updated})`);
+    res.json({ ...data, schedule_keys: updated });
   } catch (e) {
-    res.status(502).json({ error: e.message });
+    res.status(e.status || 502).json({ error: e.message });
   }
 });
 
@@ -372,6 +399,48 @@ app.post("/api/provider-keys", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/provider-keys/update", requireAdmin, async (req, res) => {
+  if (!req.body.id) return res.status(400).json({ error: "id가 필요합니다" });
+  try {
+    const keys = await fetchAllKeys();
+    const updated = await updateProvider(req.body, { litellm, store: providerStore, keys });
+    console.log(`${req.adminEmail} 이(가) 공급자 키 수정: ${updated.slug}`);
+    res.json(updated);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+app.post("/api/provider-keys/preview-stored", requireAdmin, async (req, res) => {
+  try {
+    const record = providerStore.get(req.body.id);
+    if (!record || record.kind === "pool") return res.status(404).json({ error: "공급자 키를 찾을 수 없습니다" });
+    const models = await listProviderModels({
+      provider: record.provider,
+      apiKey: record.api_key,
+      apiBase: record.api_base,
+    });
+    res.json({ models });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+app.get("/api/provider-pools/activity", requireAdmin, async (req, res) => {
+  try {
+    const record = providerStore.get(req.query.id);
+    if (!record || record.kind !== "pool") return res.status(404).json({ error: "묶음을 찾을 수 없습니다" });
+    const end = new Date();
+    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const ymd = (date) => date.toISOString().slice(0, 10);
+    const data = await litellm(`/spend/logs?start_date=${ymd(start)}&end_date=${ymd(end)}`);
+    const rows = Array.isArray(data) ? data : (data.logs || data.data || []);
+    res.json({ calls: matchPoolCalls(record, rows) });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
 app.post("/api/provider-pools", requireAdmin, async (req, res) => {
   try {
     const created = await registerPool(req.body, { litellm, store: providerStore });
@@ -421,7 +490,12 @@ app.get("/api/keys", requireAdmin, async (req, res) => {
 // 키 발급
 app.post("/api/keys", requireAdmin, async (req, res) => {
   try {
-    const prepared = attachProvider(req.body, providerStore);
+    let prepared = attachProvider(req.body, providerStore);
+    const team = await loadTeam(prepared.team_id || req.body.team_id);
+    prepared = {
+      ...prepared,
+      metadata: applyIssueSchedule(prepared.metadata || {}, { team }),
+    };
     const params = keyParams(prepared);
     if (params.max_budget == null || !Number.isFinite(params.max_budget) || params.max_budget < 0) {
       return res.status(400).json({ error: "예산(USD)이 필요합니다" });
@@ -485,6 +559,9 @@ app.post("/api/keys/update", requireAdmin, async (req, res) => {
         ...req.body,
         metadata: (current && current.metadata) || {},
       }, providerStore);
+      const teamId = req.body.team_id !== undefined ? req.body.team_id : (current && current.team_id);
+      const team = await loadTeam(teamId);
+      source.metadata = keepCampSchedule(applyIssueSchedule(source.metadata || {}, { team }), current);
     }
     const payload = { key: req.body.token, ...keyParams(source, { clearEmpty: true }) };
     if (req.body.team_id !== undefined) payload.team_id = req.body.team_id || null;
@@ -497,6 +574,17 @@ app.post("/api/keys/update", requireAdmin, async (req, res) => {
 });
 
 // 키 차단/해제 (삭제하지 않고 일시 정지)
+app.post("/api/keys/reissue", requireAdmin, async (req, res) => {
+  if (!req.body.token) return res.status(400).json({ error: "token이 필요합니다" });
+  try {
+    const out = await reissueKey(req.body.token, { litellm });
+    console.log(`${req.adminEmail} 이(가) 키 폐기 후 재발급: ${out.key_alias} (이전 ${out.retired_alias})`);
+    res.json(out);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
 app.post("/api/keys/block", requireAdmin, async (req, res) => {
   if (!req.body.token) return res.status(400).json({ error: "token이 필요합니다" });
   try {

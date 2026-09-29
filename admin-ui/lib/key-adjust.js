@@ -229,6 +229,7 @@ module.exports = {
   historyFromMetadata,
   unwrapKeyInfo,
   findKey,
+  listAllKeys,
   parseAddBudget,
   parseAddDays,
   nextExpiryFromAddDays,

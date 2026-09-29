@@ -78,6 +78,14 @@ class ProviderKeyStore {
     if (this.data.keys.length === before) throw httpError("공급자 키를 찾을 수 없습니다", 404);
     this.save();
   }
+
+  replace(id, record) {
+    const index = this.data.keys.findIndex((k) => k.id === id);
+    if (index < 0) throw httpError("공급자 키를 찾을 수 없습니다", 404);
+    this.data.keys[index] = record;
+    this.save();
+    return record;
+  }
 }
 
 function hintOf(apiKey) {
@@ -97,6 +105,9 @@ function toPublic(record, spend) {
     max_budget: record.max_budget,
     budget_duration: record.budget_duration || "",
     spend: spend == null ? null : spend,
+    remaining: record.max_budget == null || spend == null
+      ? null
+      : Math.round((Number(record.max_budget) - spend) * 1000) / 1000,
     models: (record.models || []).map((m) => ({
       name: m.name,
       call_name: m.call_name,
@@ -484,6 +495,164 @@ async function registerPool(input, { litellm, store }) {
   return toPublic(record, 0);
 }
 
+function deploymentParams(record, modelRow, extra = {}) {
+  const params = {
+    model: modelRow.backend || providerOf(record.provider).backend(modelRow.name),
+  };
+  if (record.api_key) params.api_key = record.api_key;
+  if (record.api_base) params.api_base = record.api_base;
+  return { ...params, ...extra };
+}
+
+function desiredModelNames(provider, rawModels) {
+  const names = [];
+  const seen = new Set();
+  for (const raw of rawModels || []) {
+    const name = publicModelId(provider, raw);
+    if (seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
+async function updateProvider(input, { litellm, store, keys = [] }) {
+  if (!store || store.isCorrupt()) throw httpError("공급자 키 저장소를 읽을 수 없습니다", 503);
+  const record = store.get(input.id);
+  if (!record || record.id === "env") throw httpError("공급자 키를 찾을 수 없습니다", 404);
+  if (record.kind === "pool") throw httpError("묶음은 지우고 다시 만드세요", 400);
+  const spec = providerOf(record.provider);
+  const label = String(input.label || "").trim();
+  if (!label) throw httpError("표시 이름이 필요합니다", 400);
+  const typedKey = String(input.api_key || "").trim();
+  const apiKey = typedKey || record.api_key || "";
+  if (!apiKey && !spec.optionalKey) throw httpError("API 키가 필요합니다", 400);
+  const typedBase = input.api_base == null ? "" : String(input.api_base).trim();
+  let apiBase = typedBase ? typedBase.replace(/\/$/, "") : (record.api_base || "");
+  if (record.provider === "ollama") apiBase = ollamaRoot(apiBase);
+  if (spec.needsBase && !apiBase) throw httpError("API 주소가 필요합니다", 400);
+  const budgetBlank = input.max_budget === "" || input.max_budget == null;
+  const maxBudget = spec.optionalBudget && budgetBlank ? null : normalizeBudget(input.max_budget);
+  const budgetDuration = normalizeDuration(input.budget_duration);
+  const names = desiredModelNames(record.provider, input.models);
+  if (!names.length) throw httpError("모델을 하나 이상 고르세요", 400);
+
+  const wanted = new Set(names);
+  const removed = (record.models || []).filter((model) => !wanted.has(model.name));
+  for (const model of removed) {
+    if ((keys || []).some((key) => (key.models || []).includes(model.call_name))) {
+      throw httpError(`학생 키가 이 모델을 쓰고 있습니다: ${model.call_name}`, 409);
+    }
+    const poolHit = poolsUsing(record, store).some((pool) => (pool.members || [])
+      .some((member) => member.provider_key_id === record.id && member.model === model.name));
+    if (poolHit) throw httpError(`묶음이 이 모델을 쓰고 있습니다: ${model.name}`, 409);
+  }
+
+  const next = {
+    ...record,
+    label,
+    api_key: apiKey,
+    api_base: apiBase || null,
+    key_hint: apiKey ? hintOf(apiKey) : "로컬",
+    max_budget: maxBudget,
+    budget_duration: budgetDuration,
+    models: (record.models || []).filter((model) => wanted.has(model.name)),
+  };
+  const credsChanged = apiKey !== (record.api_key || "") || (apiBase || null) !== (record.api_base || null);
+  if (credsChanged) {
+    for (const model of next.models) {
+      if (!model.model_id) throw httpError("모델 배포 id가 없어 키를 갱신하지 못했습니다. 공급자 키를 다시 등록하세요", 409);
+    }
+    for (const pool of poolsUsing(record, store)) {
+      for (const member of pool.members || []) {
+        if (member.provider_key_id === record.id && !member.model_id) {
+          throw httpError("묶음 배포 id가 없어 키를 갱신하지 못했습니다. 묶음을 다시 만드세요", 409);
+        }
+      }
+    }
+  }
+
+  await litellm("/user/update", "POST", {
+    user_id: record.litellm_user_id,
+    user_alias: label,
+    max_budget: maxBudget,
+    budget_duration: budgetDuration || null,
+  });
+  if (credsChanged) {
+    for (const model of next.models) {
+      await litellm("/model/update", "POST", {
+        model_id: model.model_id,
+        litellm_params: deploymentParams(next, model),
+      });
+    }
+    for (const pool of poolsUsing(record, store)) {
+      for (const member of pool.members || []) {
+        if (member.provider_key_id !== record.id) continue;
+        const row = next.models.find((model) => model.name === member.model)
+          || { name: member.model, backend: spec.backend(member.model) };
+        await litellm("/model/update", "POST", {
+          model_id: member.model_id,
+          litellm_params: { ...deploymentParams(next, row), weight: member.weight },
+        });
+      }
+    }
+  }
+
+  const have = new Set(next.models.map((model) => model.name));
+  const createdNow = [];
+  try {
+    for (const name of names) {
+      if (have.has(name)) continue;
+      const row = { name, call_name: callName(record.slug, name), backend: spec.backend(name) };
+      const created = await litellm("/model/new", "POST", {
+        model_name: row.call_name,
+        litellm_params: deploymentParams(next, row),
+        model_info: { access_groups: [record.slug], aiapi_provider_key_id: record.id },
+      });
+      row.model_id = created.model_id || created.model_info?.id || null;
+      createdNow.push(row);
+      next.models.push(row);
+    }
+  } catch (e) {
+    for (const row of createdNow) {
+      if (row.model_id) {
+        try { await litellm("/model/delete", "POST", { id: row.model_id }); } catch (_) { /* 이번 수정에서 만든 모델만 치운다 */ }
+      }
+    }
+    if (!e.status) e.status = 502;
+    throw e;
+  }
+  for (const model of removed) {
+    if (model.model_id) {
+      try { await litellm("/model/delete", "POST", { id: model.model_id }); } catch (_) { /* 이미 없으면 계속 */ }
+    }
+  }
+  next.models = names.map((name) => next.models.find((model) => model.name === name)).filter(Boolean);
+  store.replace(record.id, next);
+  return toPublic(next, spendFor(next, keys));
+}
+
+function matchPoolCalls(pool, rows, limit = 30) {
+  const callNames = new Set((pool.models || []).map((model) => model.call_name));
+  const byId = new Map((pool.members || []).filter((member) => member.model_id).map((member) => [member.model_id, member]));
+  const calls = [];
+  for (const row of rows || []) {
+    const modelId = row.model_id || (row.metadata && row.metadata.model_id) || "";
+    const model = row.model || row.model_group || "";
+    if (!byId.has(modelId) && !callNames.has(model)) continue;
+    const member = byId.get(modelId);
+    calls.push({
+      at: row.startTime || row.start_time || row.created_at || null,
+      member: member ? member.label : "알 수 없음",
+      model: member ? member.model : model,
+      weight: member ? member.weight : null,
+      spend: row.spend == null ? null : Number(row.spend),
+    });
+  }
+  calls.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return calls.slice(0, limit);
+}
+
 module.exports = {
   SLUG_RE,
   ProviderKeyStore,
@@ -498,5 +667,7 @@ module.exports = {
   spendFor,
   registerProvider,
   registerPool,
+  updateProvider,
   deleteProvider,
+  matchPoolCalls,
 };

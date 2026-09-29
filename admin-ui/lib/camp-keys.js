@@ -228,10 +228,10 @@ async function listExistingKeys(litellm) {
 
 async function generateCampVirtualKey(litellm, { code, teamId, params, metadata }) {
   const base = {
+    ...params,
     key_alias: code,
     team_id: teamId || undefined,
-    metadata,
-    ...params,
+    metadata: { ...(params.metadata || {}), ...metadata },
   };
   try {
     const data = await litellm("/key/generate", "POST", {
@@ -328,9 +328,15 @@ async function issueCampKeys(body, { litellm, now } = {}) {
 
   const results = [];
   for (const code of codes) {
-    const metadata = campMetadata({
-      code, prefix, expires, policy, models: params.models || [],
-    });
+    const requestedSchedule = (body.metadata && body.metadata.aiapi_schedule) || [];
+    const metadata = {
+      ...(params.metadata || {}),
+      ...campMetadata({
+        code, prefix, expires, policy, models: params.models || [],
+      }),
+      aiapi_schedule: requestedSchedule,
+      aiapi_schedule_from: "key",
+    };
     try {
       const { data, mapped } = await generateCampVirtualKey(litellm, {
         code, teamId, params, metadata,
