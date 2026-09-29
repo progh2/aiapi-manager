@@ -1,5 +1,6 @@
 .env
 data/
+admin-ui/data/provider-keys.json
 issued_keys.csv
 students.csv
 __pycache__/

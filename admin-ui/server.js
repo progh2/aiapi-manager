@@ -8,7 +8,9 @@ const { UsersStore } = require("./lib/users-store");
 const { checkAlias } = require("./lib/aliases");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
 const { revokeKeys } = require("./lib/key-revoke");
-const { adjustKey, keyDetail } = require("./lib/key-adjust");
+const { adjustKey, keyDetail, findKey } = require("./lib/key-adjust");
+const { attachProvider, ProviderKeyStore, envProvider, toPublic, spendFor, registerProvider, registerPool, deleteProvider } = require("./lib/provider-keys");
+const { PROVIDERS, listProviderModels } = require("./lib/provider-catalog");
 const { resolveIssueModels, teamModelsFor } = require("./lib/model-allowlist");
 const { issueCampKeys, campIssuePolicy, revokeCampKeys, todayYmd } = require("./lib/camp-keys");
 const { DAY_MS, ymd, buildAnalytics } = require("./lib/analytics");
@@ -21,6 +23,7 @@ const {
   LITELLM_BASE_URL = "http://litellm:4000",
   LITELLM_MASTER_KEY,
   USERS_DATA_PATH = path.join(__dirname, "data", "users.json"),
+  PROVIDER_KEYS_PATH = path.join(__dirname, "data", "provider-keys.json"),
   PORT = 3000,
 } = process.env;
 
@@ -36,6 +39,7 @@ const adminEmails = new Set(
   ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
 );
 const usersStore = new UsersStore(USERS_DATA_PATH);
+const providerStore = new ProviderKeyStore(PROVIDER_KEYS_PATH);
 const firebaseClientConfig = {
   apiKey: FIREBASE_API_KEY || "REPLACE_ME",
   authDomain: FIREBASE_AUTH_DOMAIN || `${FIREBASE_PROJECT_ID}.firebaseapp.com`,
@@ -195,9 +199,10 @@ app.get("/api/teams", requireAdmin, async (req, res) => {
 app.post("/api/teams", requireAdmin, async (req, res) => {
   if (!req.body.alias) return res.status(400).json({ error: "그룹 이름이 필요합니다" });
   try {
+    const prepared = attachProvider(req.body, providerStore, { bindUser: false });
     const data = await litellm("/team/new", "POST", {
-      team_alias: req.body.alias,
-      ...keyParams(req.body),
+      team_alias: prepared.alias,
+      ...keyParams(prepared),
     });
     console.log(`${req.adminEmail} 이(가) 그룹 생성: ${req.body.alias}`);
     res.json(data);
@@ -209,9 +214,10 @@ app.post("/api/teams", requireAdmin, async (req, res) => {
 app.post("/api/teams/update", requireAdmin, async (req, res) => {
   if (!req.body.team_id) return res.status(400).json({ error: "team_id가 필요합니다" });
   try {
+    const prepared = attachProvider(req.body, providerStore, { bindUser: false });
     res.json(await litellm("/team/update", "POST", {
-      team_id: req.body.team_id,
-      ...keyParams(req.body, { clearEmpty: true }),
+      team_id: prepared.team_id,
+      ...keyParams(prepared, { clearEmpty: true }),
     }));
     console.log(`${req.adminEmail} 이(가) 그룹 수정: ${req.body.team_id}`);
   } catch (e) {
@@ -233,7 +239,8 @@ app.post("/api/teams/delete", requireAdmin, async (req, res) => {
 // 조/학급은 team_id 또는 team(이름, 없으면 생성). 행별 성공/실패를 돌려준다.
 app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
   try {
-    const out = await assignClassBudgets(req.body, { litellm });
+    const prepared = attachProvider(req.body, providerStore);
+    const out = await assignClassBudgets(prepared, { litellm });
     const n = out.results.length;
     const fail = out.results.filter((r) => r.error).length;
     console.log(`${req.adminEmail} 이(가) 일괄 발급: ${n}명 (실패 ${fail})`);
@@ -246,7 +253,8 @@ app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
 // 캠프 짧은 키 N개. 명단 없이 인원만. 저가 모델 필수·당일 종료 강제.
 app.post("/api/keys/camp", requireAdmin, async (req, res) => {
   try {
-    const out = await issueCampKeys(req.body, { litellm });
+    const prepared = attachProvider(req.body, providerStore);
+    const out = await issueCampKeys(prepared, { litellm });
     const fail = out.results.filter((r) => r.error).length;
     console.log(`${req.adminEmail} 이(가) 캠프 키 발급: ${out.count}개 (실패 ${fail}) 만료 ${out.expires} 모델 ${(out.models || []).join(",")}`);
     res.json(out);
@@ -317,6 +325,74 @@ app.get("/api/analytics", requireAdmin, async (req, res) => {
   }
 });
 
+// 공급자 API 키. 같은 회사 키도 슬러그만 다르면 여러 개 등록한다.
+// 응답에는 비밀 키를 넣지 않는다.
+app.get("/api/provider-keys", requireAdmin, async (req, res) => {
+  if (providerStore.isCorrupt()) {
+    return res.status(503).json({ error: "provider-keys.json이 손상되었습니다" });
+  }
+  try {
+    const keys = await fetchAllKeys();
+    res.json({
+      keys: [envProvider(), ...providerStore.list().map((r) => toPublic(r, spendFor(r, keys)))],
+      providers: Object.entries(PROVIDERS).map(([id, spec]) => ({
+        id,
+        label: spec.label,
+        needs_base: Boolean(spec.needsBase),
+        optional_key: Boolean(spec.optionalKey),
+        optional_budget: Boolean(spec.optionalBudget),
+        base_placeholder: spec.basePlaceholder || "",
+      })),
+    });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+app.post("/api/provider-keys/preview", requireAdmin, async (req, res) => {
+  try {
+    const models = await listProviderModels({
+      provider: req.body.provider,
+      apiKey: req.body.api_key,
+      apiBase: req.body.api_base,
+    });
+    res.json({ models });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+app.post("/api/provider-keys", requireAdmin, async (req, res) => {
+  try {
+    const created = await registerProvider(req.body, { litellm, store: providerStore });
+    console.log(`${req.adminEmail} 이(가) 공급자 키 등록: ${created.slug}`);
+    res.json(created);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+app.post("/api/provider-pools", requireAdmin, async (req, res) => {
+  try {
+    const created = await registerPool(req.body, { litellm, store: providerStore });
+    console.log(`${req.adminEmail} 이(가) 공급자 묶음 등록: ${created.slug}`);
+    res.json(created);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+app.post("/api/provider-keys/delete", requireAdmin, async (req, res) => {
+  if (!req.body.id) return res.status(400).json({ error: "id가 필요합니다" });
+  try {
+    const keys = await fetchAllKeys();
+    res.json(await deleteProvider(req.body.id, { litellm, store: providerStore, keys }));
+    console.log(`${req.adminEmail} 이(가) 공급자 키 삭제: ${req.body.id}`);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
 // 프록시에 설정된 모델 목록 (발급 폼의 선택지)
 app.get("/api/models", requireAdmin, async (req, res) => {
   try {
@@ -345,7 +421,8 @@ app.get("/api/keys", requireAdmin, async (req, res) => {
 // 키 발급
 app.post("/api/keys", requireAdmin, async (req, res) => {
   try {
-    const params = keyParams(req.body);
+    const prepared = attachProvider(req.body, providerStore);
+    const params = keyParams(prepared);
     if (params.max_budget == null || !Number.isFinite(params.max_budget) || params.max_budget < 0) {
       return res.status(400).json({ error: "예산(USD)이 필요합니다" });
     }
@@ -353,8 +430,8 @@ app.post("/api/keys", requireAdmin, async (req, res) => {
     const slot = checkAlias(existing, req.body.alias);
     if (slot.error) return res.status(slot.skipped ? 409 : 400).json({ error: slot.error });
     const models = resolveIssueModels(
-      req.body.models,
-      await teamModelsFor(litellm, req.body.team_id)
+      prepared.models,
+      await teamModelsFor(litellm, prepared.team_id)
     );
     params.models = models.length ? models : ["gpt-4o-mini"];
     const data = await litellm("/key/generate", "POST", {
@@ -401,7 +478,15 @@ app.post("/api/keys/update", requireAdmin, async (req, res) => {
     if (Array.isArray(req.body.models) && req.body.models.filter(Boolean).length === 0) {
       return res.status(400).json({ error: "모델을 하나 이상 선택하세요" });
     }
-    const payload = { key: req.body.token, ...keyParams(req.body, { clearEmpty: true }) };
+    let source = req.body;
+    if (req.body.provider_key_id || req.body.schedule !== undefined) {
+      const current = await findKey(litellm, req.body.token);
+      source = attachProvider({
+        ...req.body,
+        metadata: (current && current.metadata) || {},
+      }, providerStore);
+    }
+    const payload = { key: req.body.token, ...keyParams(source, { clearEmpty: true }) };
     if (req.body.team_id !== undefined) payload.team_id = req.body.team_id || null;
     const data = await litellm("/key/update", "POST", payload);
     console.log(`${req.adminEmail} 이(가) 키 수정: ${req.body.token.slice(0, 12)}...`);
@@ -561,17 +646,6 @@ app.post("/api/users/delete", requireAdmin, (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
-  }
-});
-
-app.post("/api/keys/rotate", requireAdmin, async (req, res) => {
-  if (!req.body.token) return res.status(400).json({ error: "token이 필요합니다" });
-  try {
-    const data = await litellm("/key/regenerate", "POST", { key: req.body.token });
-    console.log(`${req.adminEmail} 이(가) 키 재발급`);
-    res.json({ key: data.key, key_alias: data.key_alias || null });
-  } catch (e) {
-    res.status(502).json({ error: e.message });
   }
 });
 

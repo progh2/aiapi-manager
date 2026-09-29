@@ -53,13 +53,15 @@ cp .env.example .env
 
 | 변수 | 값 |
 |---|---|
-| `OPENAI_API_KEY` | OpenAI 플랫폼에서 발급한 실제 키 (`sk-...`) |
+| `OPENAI_API_KEY` | 기본 OpenAI 키. 관리 화면의 “기본 OpenAI (.env)”가 이 값을 쓴다. 다른 키는 화면에서 추가 |
 | `LITELLM_MASTER_KEY` | 관리자용 마스터 키. `echo "sk-$(openssl rand -hex 24)"` 로 생성 |
 | `POSTGRES_PASSWORD` | 임의의 강한 비밀번호 |
 | `FIREBASE_PROJECT_ID` | Firebase 콘솔의 프로젝트 ID |
 | `ADMIN_EMAILS` | 관리자로 허용할 구글 계정 (쉼표 구분) |
 
 > `.env`와 `firebase-config.js` 수정본은 절대 공개 저장소에 올리지 말 것 (`.env`는 `.gitignore` 처리됨).
+
+관리 화면의 **공급자 API 키**에서 같은 회사 키를 여러 개, 다른 회사(Anthropic, Gemini, Groq, OpenRouter, OpenAI 호환 주소)와 Ollama 로컬 모델도 등록할 수 있다. Ollama 주소는 모델이 돌아가는 기기의 `http://호스트:11434` 이다. 프록시 컨테이너 안의 `localhost`는 그 기기가 아니다. 학생 키를 만들 때 공급자 하나를 고르면, 학생 코드의 `model`은 `슬러그/모델이름`이고 그 키만 탄다. 여러 키를 하나의 모델 이름과 정수 비율로 쓰려면 **원본 API 묶음**을 만든다. 사용 시간대를 여러 개 넣으면 한국 시간으로 그 구간에만 호출된다. 화면 한도와 별도로, 키를 발급한 사이트에도 월 한도를 건다. 공급자 키를 넣은 뒤에는 `admin-ui`와 `litellm`을 함께 다시 빌드해야 시간대 제한과 묶음 비율이 적용된다.
 
 ## 설치 A: Synology NAS (Container Manager)
 

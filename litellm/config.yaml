@@ -13,7 +13,16 @@ model_list:
 
 litellm_settings:
   drop_params: true
+  # 학생 키 metadata.aiapi_schedule 밖 호출을 거절한다.
+  callbacks: aiapi_policy.proxy_handler_instance
+
+# 묶음은 같은 model_name 배포의 weight 로 나눈다. simple-shuffle 이 그 weight 를 읽는다.
+# 배포가 하나인 모델은 고를 대상이 하나다.
+router_settings:
+  routing_strategy: simple-shuffle
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
+  # 관리 화면에서 추가한 모델이 재시작 후에도 남는다.
+  store_model_in_db: true

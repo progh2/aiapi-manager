@@ -219,6 +219,116 @@
     </fieldset>
 
     <fieldset>
+      <legend>공급자 API 키</legend>
+      <p class="muted" style="margin:.2rem 0 .6rem; font-size:.82rem">
+        학생에게 줄 가상 키가 실제로 호출할 회사 키입니다. 같은 회사 키도 슬러그만 다르게 여러 개 등록할 수 있습니다.
+        학생 키는 만들 때 고른 공급자 하나만 탑니다. 모델 이름은 <code>슬러그/모델이름</code>입니다.
+        Ollama는 모델이 설치된 컴퓨터의 주소(<code>http://호스트:11434</code>)로 등록합니다.
+      </p>
+      <p class="muted bulk-hint">
+        여기에 넣는 한도는 이 프록시가 사용량을 세어 막는 금액입니다.
+        <b>키를 발급한 사이트(OpenAI, Anthropic, Google 등)에도 반드시 월 지출 한도를 거세요.</b>
+        이쪽 집계가 늦거나 원래 키를 다른 곳에서 쓰면, 이 화면 한도와 별도로 요금이 나갈 수 있습니다.
+        리셋 주기의 “30일마다”는 발급 시각부터 30일마다 사용량을 0으로 되돌린다는 뜻입니다. 달력의 매월 1일이 아닙니다.
+      </p>
+      <form id="provider-form">
+        <div class="form-grid">
+          <label>표시 이름 *
+            <input id="pk-label" placeholder="예: 학교 OpenAI A" required>
+          </label>
+          <label>슬러그 *
+            <input id="pk-slug" placeholder="openai-a" pattern="[a-z0-9][a-z0-9-]{0,30}" required>
+          </label>
+          <label>회사 *
+            <select id="pk-provider" required></select>
+          </label>
+          <label><span id="pk-secret-label">API 키 *</span>
+            <input id="pk-secret" type="password" autocomplete="off" required>
+          </label>
+          <label id="pk-base-wrap" style="display:none">API 주소 *
+            <input id="pk-base" placeholder="https://example.com/v1">
+          </label>
+          <label><span id="pk-budget-label">사용 한도 (USD) *</span>
+            <input id="pk-budget" type="number" step="1" min="0.01" value="20" required>
+          </label>
+          <label>한도 리셋
+            <select id="pk-budget-duration">
+              <option value="">없음 — 총액에 닿으면 멈추고, 자동으로 다시 열리지 않음</option>
+              <option value="1d">1일마다 사용량을 0으로</option>
+              <option value="7d">7일마다 사용량을 0으로</option>
+              <option value="30d" selected>30일마다 사용량을 0으로 (달력의 매월 1일이 아님)</option>
+            </select>
+          </label>
+        </div>
+        <p id="pk-local-note" class="muted bulk-hint" style="display:none">
+          주소는 Ollama가 돌아가는 기기의 주소입니다. 프록시 컨테이너 안의 localhost는 그 기기가 아닙니다.
+          Ollama가 자기 컴퓨터에서만 듣고 있으면, 그 기기의 <code>OLLAMA_HOST=0.0.0.0</code> 으로 같은 망의 접속을 열어야 합니다.
+          로컬 모델은 금액이 거의 0이라 달러 한도가 요청을 막지 못합니다. 학생 키의 금액과 시간대로 막으세요. API 키는 보통 비웁니다.
+        </p>
+        <div class="bulk-actions" style="margin-top:.7rem">
+          <button type="button" id="pk-preview">이 키로 모델 조회</button>
+          <span class="muted">조회가 안 되면 아래에 모델 이름을 직접 적으세요.</span>
+        </div>
+        <div id="pk-model-boxes" class="model-boxes muted">모델을 조회하거나 직접 입력하세요.</div>
+        <div class="file-row" style="margin-top:.45rem">
+          <input id="pk-manual" placeholder="직접 입력: gpt-4o-mini">
+          <button type="button" id="pk-manual-add">모델 추가</button>
+        </div>
+        <div style="margin-top:.7rem"><button class="primary" type="submit">공급자 키 등록</button></div>
+      </form>
+      <table>
+        <thead><tr><th>이름</th><th>회사</th><th>학생 model 접두사</th><th>프록시가 센 사용량 / 한도</th><th>리셋</th><th>모델</th><th></th></tr></thead>
+        <tbody id="provider-rows"></tbody>
+      </table>
+    </fieldset>
+
+    <fieldset>
+      <legend>원본 API 묶음</legend>
+      <p class="muted" style="margin:.2rem 0 .6rem; font-size:.82rem">
+        이미 등록한 공급자 키를 둘 이상 골라 학생 모델 이름 하나로 씁니다.
+        비율 2와 1이면 2인 키가 약 두 배 자주 선택됩니다. 순서는 매번 같지 않습니다.
+        학생 코드의 <code>model</code>은 <code>묶음슬러그/모델이름</code>입니다.
+        묶음의 달러 한도는 이 묶음으로 발급한 학생 키를 함께 셉니다.
+        각 회사 사이트의 한도는 그 키로 실제로 나간 호출에 그대로 적용됩니다.
+        캠프 발급은 모델 이름에 mini, nano, flash, haiku, small 이 있을 때만 고를 수 있습니다.
+      </p>
+      <form id="pool-form">
+        <div class="form-grid">
+          <label>표시 이름 *
+            <input id="pool-label" placeholder="예: 수업용 묶음" required>
+          </label>
+          <label>슬러그 *
+            <input id="pool-slug" placeholder="class-mix" pattern="[a-z0-9][a-z0-9-]{0,30}" required>
+          </label>
+          <label>학생에게 보일 모델 이름
+            <input id="pool-model-name" placeholder="비우면 고른 모델이 같을 때 그 이름">
+          </label>
+          <label>묶음 한도 (USD) *
+            <input id="pool-budget" type="number" step="1" min="0.01" value="20" required>
+          </label>
+          <label>한도 리셋
+            <select id="pool-budget-duration">
+              <option value="">없음 — 총액에 닿으면 멈추고, 자동으로 다시 열리지 않음</option>
+              <option value="1d">1일마다 사용량을 0으로</option>
+              <option value="7d">7일마다 사용량을 0으로</option>
+              <option value="30d" selected>30일마다 사용량을 0으로 (달력의 매월 1일이 아님)</option>
+            </select>
+          </label>
+        </div>
+        <div id="pool-members" style="margin-top:.7rem"></div>
+        <p id="pool-ratio" class="muted" style="margin:.35rem 0"></p>
+        <div class="bulk-actions">
+          <button type="button" class="small pool-add">키 추가</button>
+          <button class="primary" type="submit">묶음 등록</button>
+        </div>
+      </form>
+      <table>
+        <thead><tr><th>이름</th><th>학생 model</th><th>멤버와 비율</th><th>프록시가 센 사용량 / 한도</th><th></th></tr></thead>
+        <tbody id="pool-rows"></tbody>
+      </table>
+    </fieldset>
+
+    <fieldset>
       <legend>학급/조 관리</legend>
       <p class="muted" style="margin:.2rem 0 .6rem; font-size:.82rem">
         학급/조 예산·제한은 소속 학생 키 전체의 <b>합산</b> 사용량에 적용됩니다. 개별 키 제한과 중첩 적용됩니다.</p>
@@ -232,10 +342,10 @@
           </label>
           <label>예산 리셋 주기
             <select id="t-budget-duration">
-              <option value="">없음 (총액 한도)</option>
-              <option value="1d">매일</option>
-              <option value="7d">매주</option>
-              <option value="30d">매월(30일)</option>
+              <option value="">없음 — 총액에 닿으면 멈추고, 자동으로 다시 열리지 않음</option>
+              <option value="1d">1일마다 사용량을 0으로</option>
+              <option value="7d">7일마다 사용량을 0으로</option>
+              <option value="30d">30일마다 사용량을 0으로 (달력의 매월 1일이 아님)</option>
             </select>
           </label>
           <label>학급/조 RPM
@@ -245,7 +355,12 @@
             <input id="t-tpm" type="number" min="1" placeholder="무제한">
           </label>
         </div>
-        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(수업에서 쓸 모델만. 안 고르면 제한 없음)</span></div>
+        <div class="form-grid" style="margin-top:.7rem">
+          <label>공급자 키
+            <select id="t-provider"></select>
+          </label>
+        </div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(고른 공급자 키의 모델만. 안 고르면 그 키의 모델 전체)</span></div>
         <div id="t-model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
         <p class="muted bulk-hint">허용 목록은 LiteLLM 학급 <code>models</code>에 저장되고, 새로 발급하는 키에도 복사됩니다. 목록에 없는 모델은 프록시가 거부합니다.</p>
         <div style="margin-top:.7rem"><button class="primary" type="submit">학급/조 생성</button></div>
@@ -292,15 +407,23 @@
           </label>
           <label>예산 리셋 주기
             <select id="bulk-budget-duration">
-              <option value="">없음 (총액 한도)</option>
-              <option value="1d">매일</option>
-              <option value="7d">매주</option>
-              <option value="30d">매월(30일)</option>
+              <option value="">없음 — 총액에 닿으면 멈추고, 자동으로 다시 열리지 않음</option>
+              <option value="1d">1일마다 사용량을 0으로</option>
+              <option value="7d">7일마다 사용량을 0으로</option>
+              <option value="30d">30일마다 사용량을 0으로 (달력의 매월 1일이 아님)</option>
             </select>
           </label>
         </div>
-        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(예: gpt-4o-mini만. 안 고르면 학급 설정을 따름)</span></div>
+        <div class="form-grid" style="margin-top:.7rem">
+          <label>공급자 키 *
+            <select id="bulk-provider"></select>
+          </label>
+        </div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(이 공급자 키로만 호출됩니다)</span></div>
         <div id="bulk-model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
+        <p class="muted bulk-hint" id="bulk-model-hint"></p>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">사용 시간대 <span class="muted">(비우면 항상. 여러 개면 하나라도 해당할 때 허용. 한국 시간)</span></div>
+        <div id="bulk-schedule"></div>
         <p class="muted bulk-hint" id="bulk-expiry-hint"></p>
         <div class="file-row">
           <span>명단 CSV</span>
@@ -353,8 +476,15 @@
             <input id="camp-rpm" type="number" min="1" value="10" placeholder="무제한">
           </label>
         </div>
+        <div class="form-grid" style="margin-top:.7rem">
+          <label>공급자 키 *
+            <select id="camp-provider"></select>
+          </label>
+        </div>
         <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 * <span class="muted">(캠프는 저가 모델만. 예: gpt-4o-mini)</span></div>
         <div id="camp-model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">사용 시간대 <span class="muted">(비우면 당일 항상. 체험 시간만 열려면 시간대를 추가)</span></div>
+        <div id="camp-schedule"></div>
         <p class="muted bulk-hint" id="camp-preview"></p>
         <div class="bulk-actions">
           <button class="primary" type="submit" id="camp-submit">짧은 키 N개 만들기</button>
@@ -375,6 +505,9 @@
       <legend>키 발급 (1명)</legend>
       <form id="issue-form">
         <div class="form-grid">
+          <label>공급자 키 *
+            <select id="issue-provider"></select>
+          </label>
           <label>키 별칭
             <input id="alias" placeholder="예: 20261001-홍길동">
           </label>
@@ -386,10 +519,10 @@
           </label>
           <label>예산 리셋 주기
             <select id="budget-duration">
-              <option value="">없음 (총액 한도)</option>
-              <option value="1d">매일</option>
-              <option value="7d">매주</option>
-              <option value="30d">매월(30일)</option>
+              <option value="">없음 — 총액에 닿으면 멈추고, 자동으로 다시 열리지 않음</option>
+              <option value="1d">1일마다 사용량을 0으로</option>
+              <option value="7d">7일마다 사용량을 0으로</option>
+              <option value="30d">30일마다 사용량을 0으로 (달력의 매월 1일이 아님)</option>
             </select>
           </label>
           <label>키 만료 기한
@@ -411,8 +544,11 @@
             <input id="tpm" type="number" min="1" placeholder="비우면 무제한">
           </label>
         </div>
-        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(예: gpt-4o-mini만. 안 고르면 학급 설정/전체)</span></div>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델 <span class="muted">(학생 코드의 model 값은 아래 호출 이름입니다)</span></div>
         <div id="model-boxes" class="model-boxes muted">모델 목록 불러오는 중…</div>
+        <p class="muted bulk-hint" id="issue-model-hint"></p>
+        <div style="margin-top:.7rem; font-size:.82rem; color:#555">사용 시간대 <span class="muted">(비우면 항상. 수업이 여러 번이면 시간대를 더 추가. 하나라도 해당하면 허용. 한국 시간)</span></div>
+        <div id="issue-schedule"></div>
         <p class="muted bulk-hint">여러 명은 위 <b>학급 일괄 예산 할당</b>, 명단 없는 캠프는 <b>캠프 짧은 키</b>를 쓰세요.</p>
         <div style="margin-top:.9rem"><button class="primary" type="submit">발급</button></div>
       </form>
@@ -464,7 +600,7 @@
     </div>
     <table>
       <thead><tr>
-        <th></th><th>별칭</th><th>학급/조</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>RPM/TPM</th><th></th>
+        <th></th><th>별칭</th><th>학급/조</th><th>지출 / 예산</th><th>리셋 주기</th><th>만료일</th><th>모델</th><th>시간대</th><th>RPM/TPM</th><th></th>
       </tr></thead>
       <tbody id="key-rows"></tbody>
     </table>
@@ -482,10 +618,10 @@
         </label>
         <label>예산 리셋 주기
           <select id="e-budget-duration">
-            <option value="">없음 (총액 한도)</option>
-            <option value="1d">매일</option>
-            <option value="7d">매주</option>
-            <option value="30d">매월(30일)</option>
+            <option value="">없음 — 총액에 닿으면 멈추고, 자동으로 다시 열리지 않음</option>
+            <option value="1d">1일마다 사용량을 0으로</option>
+            <option value="7d">7일마다 사용량을 0으로</option>
+            <option value="30d">30일마다 사용량을 0으로 (달력의 매월 1일이 아님)</option>
           </select>
         </label>
         <label id="e-duration-wrap">만료 연장 (지금부터)
@@ -504,8 +640,17 @@
         </label>
       </div>
       <div id="e-models-wrap">
+        <div class="form-grid" style="margin-top:.7rem">
+          <label>공급자 키
+            <select id="e-provider"></select>
+          </label>
+        </div>
         <div style="margin-top:.7rem; font-size:.82rem; color:#555">허용 모델</div>
         <div id="e-model-boxes" class="model-boxes"></div>
+        <div id="e-schedule-wrap">
+          <div style="margin-top:.7rem; font-size:.82rem; color:#555">사용 시간대 <span class="muted">(비우면 항상. 여러 개 가능. 한국 시간)</span></div>
+          <div id="e-schedule"></div>
+        </div>
       </div>
       <div class="dlg-actions">
         <button type="button" id="edit-cancel">취소</button>
@@ -618,32 +763,266 @@
       return data;
     }
 
-    function modelCheckboxes(container, prefix, checked) {
+    function asModelEntries(models) {
+      const list = models || availableModels;
+      return list.map((m) => (typeof m === "string" ? { value: m, label: m } : m));
+    }
+
+    function modelCheckboxes(container, prefix, checked, models) {
+      const entries = asModelEntries(models);
       if (prefix === "camp-models") {
-        campModelCheckboxes(container, checked);
+        campModelCheckboxes(container, checked, entries);
         return;
       }
-      const selected = checked == null ? availableModels.filter((m) => m === "gpt-4o-mini") : checked;
-      container.innerHTML = availableModels.map((m) =>
-        `<label><input type="checkbox" name="${esc(prefix)}" value="${esc(m)}" ${selected.includes(m) ? "checked" : ""}> ${esc(m)}</label>`
+      const values = entries.map((m) => m.value);
+      const selected = checked == null
+        ? values.filter((m) => m === "gpt-4o-mini" || m.endsWith("/gpt-4o-mini"))
+        : checked;
+      container.innerHTML = entries.map((m) =>
+        `<label><input type="checkbox" name="${esc(prefix)}" value="${esc(m.value)}" ${selected.includes(m.value) ? "checked" : ""}> ${esc(m.label)}${m.value !== m.label ? ` <span class="muted">${esc(m.value)}</span>` : ""}</label>`
       ).join("") || '<span class="muted">모델 없음</span>';
     }
 
-    function campModelCheckboxes(container, checked = []) {
-      const cheap = availableModels.filter(isCampLowCost);
-      const pick = checked.filter(isCampLowCost);
-      const pre = pick.length ? pick : (cheap.includes("gpt-4o-mini") ? ["gpt-4o-mini"] : cheap.slice(0, 1));
+    function campModelCheckboxes(container, checked = [], entries) {
+      const list = entries || asModelEntries(availableModels);
+      const cheap = list.filter((m) => isCampLowCost(m.value) || isCampLowCost(m.label));
+      const pick = checked.filter((m) => cheap.some((c) => c.value === m));
+      const pre = pick.length ? pick : (cheap.some((m) => m.value.endsWith("gpt-4o-mini")) ? [cheap.find((m) => m.value.endsWith("gpt-4o-mini")).value] : cheap.slice(0, 1).map((m) => m.value));
       const cheapHtml = cheap.map((m) =>
-        `<label><input type="checkbox" name="camp-models" value="${esc(m)}" ${pre.includes(m) ? "checked" : ""}> ${esc(m)}</label>`
+        `<label><input type="checkbox" name="camp-models" value="${esc(m.value)}" ${pre.includes(m.value) ? "checked" : ""}> ${esc(m.label)}</label>`
       ).join("");
-      const blocked = availableModels.filter((m) => !isCampLowCost(m)).map((m) =>
-        `<label class="muted"><input type="checkbox" disabled> ${esc(m)} <span class="badge">캠프 불가</span></label>`
+      const blocked = list.filter((m) => !cheap.includes(m)).map((m) =>
+        `<label class="muted"><input type="checkbox" disabled> ${esc(m.label)} <span class="badge">캠프 불가</span></label>`
       ).join("");
       container.innerHTML = (cheapHtml || '<span class="muted">저가 모델 없음</span>') + blocked;
     }
 
     function checkedModels(prefix) {
       return [...document.querySelectorAll(`input[name="${prefix}"]:checked`)].map((c) => c.value);
+    }
+
+    function providerById(id) {
+      return providerKeys.find((p) => p.id === id) || providerKeys.find((p) => p.id === "env") || null;
+    }
+
+    function providerEntries(id) {
+      const p = providerById(id);
+      return (p?.models || []).map((m) => ({ value: m.call_name, label: m.name }));
+    }
+
+    function fillProviderSelect(select, selected) {
+      if (!select) return;
+      select.innerHTML = providerKeys.map((p) =>
+        `<option value="${esc(p.id)}">${esc(p.label)}${p.slug ? ` (${esc(p.slug)})` : ""}</option>`
+      ).join("") || `<option value="env">기본 OpenAI (.env)</option>`;
+      if (selected && [...select.options].some((o) => o.value === selected)) select.value = selected;
+    }
+
+    function bindProviderModels(selectId, box, prefix, hint) {
+      const select = $(selectId);
+      const apply = () => {
+        const entries = providerEntries(select.value);
+        modelCheckboxes(box, prefix, null, entries);
+        if (hint) {
+          const p = providerById(select.value);
+          const example = p?.models?.[0]?.call_name || (p?.slug ? `${p.slug}/모델` : "gpt-4o-mini");
+          if (p?.kind === "pool") hint.textContent = `묶음입니다. 학생 model 예: ${example}. 호출은 정한 비율대로 나뉩니다.`;
+          else if (p?.slug) hint.textContent = `학생 코드의 model 예: ${example}`;
+          else hint.textContent = "기본 키는 model 이름 그대로입니다. 예: gpt-4o-mini";
+        }
+      };
+      select.onchange = apply;
+      apply();
+    }
+
+    function renderSchedule(container, rows) {
+      if (!container) return;
+      const list = rows && rows.length ? rows : [];
+      container.innerHTML = list.map((row) => scheduleRow(row)).join("")
+        + `<div style="margin-top:.35rem"><button type="button" class="small sched-add">시간대 추가</button></div>`;
+    }
+
+    function scheduleRow(row) {
+      const days = new Set((row?.days || []).map(String));
+      const checks = DAY_OPTS.map(([v, t]) =>
+        `<label style="margin-right:.35rem"><input type="checkbox" value="${v}" ${days.has(v) ? "checked" : ""}> ${t}</label>`
+      ).join("");
+      return `<div class="sched-row" style="margin:.35rem 0">
+        ${checks}
+        <input class="sched-start" type="time" value="${esc(row?.start || "09:00")}">
+        –
+        <input class="sched-end" type="time" value="${esc(row?.end || "10:50")}">
+        <button type="button" class="small sched-del">빼기</button>
+      </div>`;
+    }
+
+    function readSchedule(container) {
+      if (!container) return [];
+      return [...container.querySelectorAll(".sched-row")].map((row) => ({
+        days: [...row.querySelectorAll('input[type="checkbox"]:checked')].map((c) => Number(c.value)),
+        start: row.querySelector(".sched-start").value,
+        end: row.querySelector(".sched-end").value,
+      })).filter((r) => r.days.length || r.start || r.end);
+    }
+
+    function onScheduleClick(ev) {
+      const add = ev.target.closest(".sched-add");
+      const del = ev.target.closest(".sched-del");
+      if (add) {
+        const box = add.parentElement.parentElement;
+        add.parentElement.insertAdjacentHTML("beforebegin", scheduleRow({ days: [2, 4], start: "09:00", end: "10:50" }));
+        return;
+      }
+      if (del) del.closest(".sched-row").remove();
+    }
+
+    function formatSchedule(schedule) {
+      const windows = schedule || [];
+      if (!windows.length) return "항상";
+      const names = ["", "월", "화", "수", "목", "금", "토", "일"];
+      return windows.map((w) => `${(w.days || []).map((d) => names[d] || "").join("")} ${w.start}–${w.end}`).join(", ");
+    }
+
+    async function loadProviderKeys() {
+      const data = await api("/api/provider-keys");
+      providerKeys = data.keys || [];
+      providerCatalog = data.providers || [];
+      const sel = $("pk-provider");
+      if (sel && !sel.dataset.ready) {
+        sel.innerHTML = providerCatalog.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join("");
+        sel.dataset.ready = "1";
+        sel.onchange = applyProviderForm;
+      }
+      applyProviderForm();
+      for (const id of ["t-provider", "bulk-provider", "camp-provider", "issue-provider", "e-provider"]) {
+        fillProviderSelect($(id));
+      }
+      renderProviderRows();
+      renderPoolRows();
+      ensurePoolMembers();
+      bindProviderModels("issue-provider", $("model-boxes"), "models", $("issue-model-hint"));
+      bindProviderModels("bulk-provider", $("bulk-model-boxes"), "bulk-models", $("bulk-model-hint"));
+      bindProviderModels("camp-provider", $("camp-model-boxes"), "camp-models", null);
+      bindProviderModels("t-provider", $("t-model-boxes"), "t-models", null);
+      renderSchedule($("issue-schedule"), []);
+      renderSchedule($("bulk-schedule"), []);
+      renderSchedule($("camp-schedule"), []);
+    }
+
+    function renderProviderRows() {
+      const body = $("provider-rows");
+      if (!body) return;
+      const rows = providerKeys.filter((p) => !p.builtin && p.kind !== "pool");
+      body.innerHTML = rows.map((p) => `
+        <tr>
+          <td>${esc(p.label)} <span class="muted">${esc(p.key_hint || "")}</span></td>
+          <td>${esc(p.provider_label || p.provider)}</td>
+          <td><code>${esc(p.slug)}/</code></td>
+          <td>${gauge(p.spend || 0, p.max_budget)}</td>
+          <td>${DUR_LABEL[p.budget_duration] || '<span class="muted">없음</span>'}</td>
+          <td>${(p.models || []).map((m) => esc(m.call_name)).join(", ")}</td>
+          <td><button type="button" class="small" data-pk-del="${esc(p.id)}">삭제</button></td>
+        </tr>`).join("") || '<tr><td colspan="7" class="muted">등록된 공급자 키 없음. 기본 OpenAI(.env)만 쓸 수 있습니다.</td></tr>';
+    }
+
+    function applyProviderForm() {
+      const spec = providerCatalog.find((p) => p.id === $("pk-provider").value) || {};
+      $("pk-base-wrap").style.display = spec.needs_base ? "" : "none";
+      const base = $("pk-base");
+      base.placeholder = spec.base_placeholder || "https://example.com/v1";
+      base.required = Boolean(spec.needs_base);
+      $("pk-secret").required = !spec.optional_key;
+      $("pk-secret-label").textContent = spec.optional_key ? "API 키 (없으면 비움)" : "API 키 *";
+      $("pk-budget").required = !spec.optional_budget;
+      $("pk-budget-label").textContent = spec.optional_budget ? "사용 한도 (USD, 비우면 없음)" : "사용 한도 (USD) *";
+      const note = $("pk-local-note");
+      if (note) note.style.display = spec.optional_key ? "" : "none";
+    }
+
+    function poolSources() {
+      return providerKeys.filter((p) => p.kind !== "pool");
+    }
+
+    function poolMemberRow() {
+      const options = poolSources().map((p) =>
+        `<option value="${esc(p.id)}">${esc(p.label)}${p.slug ? ` (${esc(p.slug)})` : ""}</option>`
+      ).join("");
+      return `<div class="pool-member" style="display:flex; gap:.5rem; align-items:end; margin:.35rem 0; flex-wrap:wrap">
+        <label>공급자 키 <select class="pool-provider">${options}</select></label>
+        <label>그 키의 모델 <select class="pool-model"></select></label>
+        <label>비율 <input class="pool-weight" type="number" min="1" max="1000" step="1" value="1" required></label>
+        <button type="button" class="small pool-del-row">빼기</button>
+      </div>`;
+    }
+
+    function fillPoolModelSelect(providerSelect) {
+      const row = providerSelect.closest(".pool-member");
+      const modelSel = row.querySelector(".pool-model");
+      const current = modelSel.value;
+      const models = (providerKeys.find((p) => p.id === providerSelect.value)?.models) || [];
+      modelSel.innerHTML = models.map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("")
+        || `<option value="">모델 없음</option>`;
+      if ([...modelSel.options].some((o) => o.value === current)) modelSel.value = current;
+    }
+
+    function ensurePoolMembers() {
+      const box = $("pool-members");
+      if (!box) return;
+      if (!box.querySelector(".pool-member")) {
+        box.innerHTML = poolMemberRow() + poolMemberRow();
+        const second = box.querySelectorAll(".pool-provider")[1];
+        if (second && second.options[1]) second.selectedIndex = 1;
+      }
+      const options = poolSources().map((p) =>
+        `<option value="${esc(p.id)}">${esc(p.label)}${p.slug ? ` (${esc(p.slug)})` : ""}</option>`
+      ).join("");
+      for (const sel of box.querySelectorAll(".pool-provider")) {
+        const current = sel.value;
+        sel.innerHTML = options;
+        if (current && [...sel.options].some((o) => o.value === current)) sel.value = current;
+        fillPoolModelSelect(sel);
+      }
+      refreshPoolRatio();
+    }
+
+    function refreshPoolRatio() {
+      const el = $("pool-ratio");
+      if (!el) return;
+      const weights = [...document.querySelectorAll("#pool-members .pool-weight")].map((input) => Number(input.value) || 0);
+      const sum = weights.reduce((acc, n) => acc + n, 0);
+      el.textContent = sum ? `호출 비율 ${weights.map((w) => `${Math.round((w / sum) * 100)}%`).join(" : ")}` : "";
+    }
+
+    function readPoolMembers() {
+      return [...document.querySelectorAll("#pool-members .pool-member")].map((row) => ({
+        provider_key_id: row.querySelector(".pool-provider").value,
+        model: row.querySelector(".pool-model").value,
+        weight: Number(row.querySelector(".pool-weight").value),
+      })).filter((m) => m.provider_key_id && m.model);
+    }
+
+    function renderPoolRows() {
+      const body = $("pool-rows");
+      if (!body) return;
+      const rows = providerKeys.filter((p) => p.kind === "pool");
+      body.innerHTML = rows.map((p) => {
+        const members = (p.members || []).map((m) => `${esc(m.label)} ${esc(m.model)} ×${esc(String(m.weight))}`).join(", ");
+        const call = (p.models || []).map((m) => esc(m.call_name)).join(", ");
+        return `<tr>
+          <td>${esc(p.label)}</td>
+          <td><code>${call}</code></td>
+          <td>${members}</td>
+          <td>${gauge(p.spend || 0, p.max_budget)}</td>
+          <td><button type="button" class="small" data-pool-del="${esc(p.id)}">삭제</button></td>
+        </tr>`;
+      }).join("") || '<tr><td colspan="5" class="muted">묶음 없음</td></tr>';
+    }
+
+    function renderPreviewModels() {
+      const box = $("pk-model-boxes");
+      box.innerHTML = previewModels.map((m) =>
+        `<label><input type="checkbox" name="pk-models" value="${esc(m)}" checked> ${esc(m)}</label>`
+      ).join("") || '<span class="muted">모델 없음</span>';
     }
 
     function formatModels(list, fallback) {
@@ -679,10 +1058,7 @@
       try {
         await loadCampPolicy();
         availableModels = (await api("/api/models")).models;
-        modelCheckboxes($("model-boxes"), "models");
-        modelCheckboxes($("t-model-boxes"), "t-models");
-        modelCheckboxes($("bulk-model-boxes"), "bulk-models");
-        modelCheckboxes($("camp-model-boxes"), "camp-models");
+        await loadProviderKeys();
         if ($("mock-chat-model")) {
           $("mock-chat-model").innerHTML = availableModels
             .map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
@@ -717,7 +1093,11 @@
       return d.toLocaleDateString("ko-KR") + (soon ? ' <span class="badge yellow">임박</span>' : "");
     }
 
-    const DUR_LABEL = { "1d": "매일", "7d": "매주", "30d": "매월" };
+    const DUR_LABEL = { "1d": "1일마다", "7d": "7일마다", "30d": "30일마다" };
+    const DAY_OPTS = [["1","월"],["2","화"],["3","수"],["4","목"],["5","금"],["6","토"],["7","일"]];
+    let providerKeys = [];
+    let providerCatalog = [];
+    let previewModels = [];
     const teamAlias = (id) => teamCache.find((t) => t.team_id === id)?.team_alias || (id ? id.slice(0, 8) : "");
 
     async function refreshTeams() {
@@ -802,11 +1182,11 @@
             <td>${DUR_LABEL[k.budget_duration] || '<span class="muted">없음</span>'}</td>
             <td>${expiryCell(k)}</td>
             <td>${keyModelLabel(k)}</td>
+            <td>${esc(formatSchedule(k.metadata && k.metadata.aiapi_schedule))}</td>
             <td>${k.rpm_limit ?? "-"} / ${k.tpm_limit ?? "-"}</td>
             <td style="white-space:nowrap">
               <button class="small" data-i="${i}" data-act="detail">상세</button>
               <button class="small" data-i="${i}" data-act="edit">수정</button>
-              <button class="small" data-i="${i}" data-act="rotate">재발급</button>
               <button class="small" data-i="${i}" data-act="block">${k.blocked ? "해제" : "차단"}</button>
               <button class="small" data-i="${i}" data-act="del">삭제</button>
             </td>
@@ -814,7 +1194,7 @@
       });
       const vis = visibleKeys();
       $("key-rows").innerHTML = rows.join("")
-        || '<tr><td colspan="9" class="muted">필터에 맞는 키 없음</td></tr>';
+        || '<tr><td colspan="10" class="muted">필터에 맞는 키 없음</td></tr>';
       $("filter-count").textContent = vis.length
         ? `${vis.length}개` + (vis.length !== keyCache.length ? ` / 전체 ${keyCache.length}개` : "")
         : "";
@@ -1034,6 +1414,7 @@
             rpm_limit: $("t-rpm").value,
             tpm_limit: $("t-tpm").value,
             models: checkedModels("t-models"),
+            provider_key_id: $("t-provider").value,
           }),
         });
         $("t-alias").value = "";
@@ -1052,6 +1433,8 @@
         rpm_limit: $("rpm").value,
         tpm_limit: $("tpm").value,
         models: checkedModels("models"),
+        provider_key_id: $("issue-provider").value,
+        schedule: readSchedule($("issue-schedule")),
       };
     }
 
@@ -1061,12 +1444,13 @@
       try {
         const alias = $("alias").value.trim();
         if (!alias) throw new Error("별칭을 입력하세요. 여러 명은 학급 일괄 예산 할당을 사용하세요");
+        const settings = issueSettings();
         const data = await api("/api/keys", {
           method: "POST",
-          body: JSON.stringify({ alias, ...issueSettings() }),
+          body: JSON.stringify({ alias, ...settings }),
         });
         box.style.display = "block";
-        box.textContent = `발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}`;
+        box.textContent = `발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}\n학생 model 값: ${settings.models.join(", ") || "(학급 설정)"}`;
         $("alias").value = "";
         refreshKeys();
       } catch (e) { $("error").textContent = e.message; }
@@ -1076,12 +1460,24 @@
     function toggleBulkTeamName() {
       $("bulk-team-name-wrap").style.display = $("bulk-team").value === "__new__" ? "" : "none";
     }
+    function providerIdFromModels(models) {
+      const first = (models || [])[0] || "";
+      const slash = first.indexOf("/");
+      if (slash <= 0) return "env";
+      const slug = first.slice(0, slash);
+      return providerKeys.find((p) => p.slug === slug)?.id || "env";
+    }
+
     function syncModelsFromTeam(prefix, teamId) {
       const t = teamCache.find((x) => x.team_id === teamId);
+      const selectId = prefix === "bulk-models" ? "bulk-provider"
+        : prefix === "camp-models" ? "camp-provider" : "issue-provider";
       const boxes = prefix === "bulk-models" ? $("bulk-model-boxes")
         : prefix === "camp-models" ? $("camp-model-boxes")
         : $("model-boxes");
-      if (boxes && availableModels.length) modelCheckboxes(boxes, prefix, t?.models || []);
+      const select = $(selectId);
+      if (select && t?.models?.length) select.value = providerIdFromModels(t.models);
+      if (boxes) modelCheckboxes(boxes, prefix, t?.models || [], providerEntries(select && select.value));
     }
     $("bulk-team").onchange = () => {
       toggleBulkTeamName();
@@ -1218,6 +1614,8 @@
         expires: todayYmd(),
         rpm_limit: $("camp-rpm").value,
         models,
+        provider_key_id: $("camp-provider").value,
+        schedule: readSchedule($("camp-schedule")),
       };
       if (teamSel === "__new__") {
         const name = $("camp-team-name").value.trim();
@@ -1443,6 +1841,8 @@
         duration: $("bulk-duration").value,
         expires: $("bulk-expires").value,
         models: checkedModels("bulk-models"),
+        provider_key_id: $("bulk-provider").value,
+        schedule: readSchedule($("bulk-schedule")),
       };
       if (teamSel === "__new__") {
         const name = $("bulk-team-name").value.trim();
@@ -1658,13 +2058,20 @@
       $("e-duration-wrap").style.display = kind === "key" ? "" : "none";
       $("e-team-wrap").style.display = kind === "key" ? "" : "none";
       $("e-models-wrap").style.display = "";
+      $("e-schedule-wrap").style.display = kind === "key" ? "" : "none";
+      const providerId = obj.metadata?.aiapi_provider_key_id || providerIdFromModels(obj.models);
+      fillProviderSelect($("e-provider"), providerId);
+      $("e-provider").onchange = () => {
+        modelCheckboxes($("e-model-boxes"), "e-models", null, providerEntries($("e-provider").value));
+      };
       if (kind === "key") {
         const sel = $("e-team");
         sel.innerHTML = `<option value="">학급 없음</option>` +
           teamCache.map((t) => `<option value="${esc(t.team_id)}">${esc(t.team_alias || t.team_id.slice(0, 8))}</option>`).join("");
         sel.value = obj.team_id || "";
+        renderSchedule($("e-schedule"), obj.metadata?.aiapi_schedule || []);
       }
-      modelCheckboxes($("e-model-boxes"), "e-models", obj.models || []);
+      modelCheckboxes($("e-model-boxes"), "e-models", obj.models || [], providerEntries($("e-provider").value));
       $("edit-dlg").showModal();
     }
     $("edit-cancel").onclick = () => $("edit-dlg").close();
@@ -1686,20 +2093,145 @@
               duration: $("e-duration").value,
               team_id: $("e-team").value,
               models,
+              provider_key_id: $("e-provider").value,
+              schedule: readSchedule($("e-schedule")),
               ...common,
             }),
           });
         } else {
           await api("/api/teams/update", {
             method: "POST",
-            body: JSON.stringify({ team_id: editTarget.team_id, models, ...common }),
+            body: JSON.stringify({
+              team_id: editTarget.team_id,
+              models,
+              provider_key_id: $("e-provider").value,
+              ...common,
+            }),
           });
         }
         refreshKeys();
       } catch (e) { $("error").textContent = e.message; }
     };
 
+    $("pk-preview").onclick = async () => {
+      $("error").textContent = "";
+      try {
+        const data = await api("/api/provider-keys/preview", {
+          method: "POST",
+          body: JSON.stringify({
+            provider: $("pk-provider").value,
+            api_key: $("pk-secret").value,
+            api_base: $("pk-base").value,
+          }),
+        });
+        previewModels = data.models || [];
+        renderPreviewModels();
+      } catch (e) { $("error").textContent = e.message; }
+    };
+    $("pk-manual-add").onclick = () => {
+      const name = $("pk-manual").value.trim();
+      if (!name || previewModels.includes(name)) return;
+      previewModels.push(name);
+      $("pk-manual").value = "";
+      renderPreviewModels();
+    };
+    $("provider-form").onsubmit = async (ev) => {
+      ev.preventDefault();
+      $("error").textContent = "";
+      try {
+        await api("/api/provider-keys", {
+          method: "POST",
+          body: JSON.stringify({
+            label: $("pk-label").value.trim(),
+            slug: $("pk-slug").value.trim(),
+            provider: $("pk-provider").value,
+            api_key: $("pk-secret").value,
+            api_base: $("pk-base").value,
+            max_budget: $("pk-budget").value,
+            budget_duration: $("pk-budget-duration").value,
+            models: checkedModels("pk-models"),
+          }),
+        });
+        $("pk-secret").value = "";
+        $("pk-label").value = "";
+        $("pk-slug").value = "";
+        previewModels = [];
+        renderPreviewModels();
+        await loadModels();
+      } catch (e) { $("error").textContent = e.message; }
+    };
+
+    const poolMembers = $("pool-members");
+    if (poolMembers) {
+      poolMembers.addEventListener("change", (ev) => {
+        if (ev.target.classList.contains("pool-provider")) fillPoolModelSelect(ev.target);
+        refreshPoolRatio();
+      });
+      poolMembers.addEventListener("input", (ev) => {
+        if (ev.target.classList.contains("pool-weight")) refreshPoolRatio();
+      });
+    }
+    $("pool-form").onsubmit = async (ev) => {
+      ev.preventDefault();
+      $("error").textContent = "";
+      try {
+        await api("/api/provider-pools", {
+          method: "POST",
+          body: JSON.stringify({
+            label: $("pool-label").value.trim(),
+            slug: $("pool-slug").value.trim(),
+            model_name: $("pool-model-name").value.trim(),
+            max_budget: $("pool-budget").value,
+            budget_duration: $("pool-budget-duration").value,
+            members: readPoolMembers(),
+          }),
+        });
+        $("pool-label").value = "";
+        $("pool-slug").value = "";
+        $("pool-model-name").value = "";
+        await loadModels();
+      } catch (e) { $("error").textContent = e.message; }
+    };
+
     document.addEventListener("click", async (ev) => {
+      if (ev.target.closest(".sched-add") || ev.target.closest(".sched-del")) {
+        onScheduleClick(ev);
+        return;
+      }
+      if (ev.target.closest(".pool-add")) {
+        const box = $("pool-members");
+        box.insertAdjacentHTML("beforeend", poolMemberRow());
+        fillPoolModelSelect(box.querySelector(".pool-member:last-child .pool-provider"));
+        refreshPoolRatio();
+        return;
+      }
+      if (ev.target.closest(".pool-del-row")) {
+        if (document.querySelectorAll("#pool-members .pool-member").length <= 2) {
+          $("error").textContent = "묶음은 공급자 키 두 개부터 등록됩니다";
+          return;
+        }
+        ev.target.closest(".pool-member").remove();
+        refreshPoolRatio();
+        return;
+      }
+      const poolDel = ev.target.dataset.poolDel;
+      if (poolDel) {
+        if (!confirm("이 묶음을 삭제할까요? 학생 키가 남아 있으면 거절됩니다. 넣었던 공급자 키는 남습니다.")) return;
+        try {
+          await api("/api/provider-keys/delete", { method: "POST", body: JSON.stringify({ id: poolDel }) });
+          await loadModels();
+        } catch (e) { $("error").textContent = e.message; }
+        return;
+      }
+      const pkDel = ev.target.dataset.pkDel;
+      if (pkDel) {
+        if (!confirm("이 공급자 키를 삭제할까요? 학생 키가 남아 있으면 거절됩니다.")) return;
+        try {
+          await api("/api/provider-keys/delete", { method: "POST", body: JSON.stringify({ id: pkDel }) });
+          await loadModels();
+        } catch (e) { $("error").textContent = e.message; }
+        return;
+      }
       const act = ev.target.dataset.act;
       if (!act) return;
       try {
@@ -1722,11 +2254,6 @@
           const k = keyCache[Number(ev.target.dataset.i)];
           if (act === "detail") return openDetail(k);
           if (act === "edit") return openEdit("key", k);
-          if (act === "rotate") {
-            if (!confirm(`'${k.key_alias}' 키를 재발급할까요? 기존 키 문자열은 바로 쓸 수 없게 됩니다.`)) return;
-            const data = await api("/api/keys/rotate", { method: "POST", body: JSON.stringify({ token: k.token }) });
-            $("new-key").textContent = `재발급됨 — 지금 복사하세요 (다시 볼 수 없음): ${data.key}`;
-          }
           if (act === "del") {
             if (!confirm(`'${k.key_alias}' 키를 삭제할까요? 학생은 더 이상 사용할 수 없게 됩니다.`)) return;
             await api("/api/keys/delete", { method: "POST", body: JSON.stringify({ keys: [k.token] }) });

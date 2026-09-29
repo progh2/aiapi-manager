@@ -27,6 +27,8 @@ function keyGenerateParams(body, now) {
   if (body.rpm_limit) p.rpm_limit = Number(body.rpm_limit);
   if (body.tpm_limit) p.tpm_limit = Number(body.tpm_limit);
   if (body.max_parallel_requests) p.max_parallel_requests = Number(body.max_parallel_requests);
+  if (body.user_id) p.user_id = String(body.user_id);
+  if (body.metadata && typeof body.metadata === "object") p.metadata = body.metadata;
   return p;
 }
 
