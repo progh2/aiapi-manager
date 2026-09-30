@@ -6,6 +6,7 @@
 //     서버는 여전히 토큰을 검증하므로, 이 값이 실제 배포에 들어가도 인증이 풀리지 않는다.
 // 사용: npm run mock → http://127.0.0.1:3456   (?as=user 는 등록 사용자 화면)
 //       MOCK_SIMULATE=0 이면 가짜 호출을 만들지 않는다.
+//       흉내 LLM(:4456)이 AI 엘피의 Ollama·OpenAI 호환 서버 노릇을 한다. MOCK_ASSISTANT=off 면 엘피 설정을 비워 둔다.
 
 const http = require("http");
 const crypto = require("crypto");
@@ -13,9 +14,11 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { scheduleAllows } = require("./lib/schedule");
+const { createFakeLlm, openaiReply } = require("./dev-llm");
 
 const PORT = Number(process.env.PORT || 3456);
 const LITE_PORT = Number(process.env.MOCK_LITELLM_PORT || 4455);
+const LLM_PORT = Number(process.env.MOCK_LLM_PORT || 4456);
 const SIMULATE = process.env.MOCK_SIMULATE !== "0";
 const MASTER = "sk-mock-master";
 const ADMIN = "teacher@school.kr";
@@ -90,6 +93,16 @@ async function handleLite(req, res, body) {
 
   if (p === "/health/liveliness") return ok("I'm alive!");
   if (p === "/health/readiness") return ok({ status: "healthy", db: "connected", litellm_version: "mock" });
+  // AI 엘피 "프록시 방식": 비서 전용 가상 키로 부르면 흉내 LLM 이 답하고 호출 기록이 남는다.
+  if (p === "/v1/chat/completions") {
+    const bearer = String(req.headers.authorization || "").replace(/^Bearer /, "");
+    const key = db.keys.find((k) => k.token === hash(bearer));
+    if (!key && bearer !== MASTER) return fail(res, 401, "Authentication Error, Invalid proxy server token passed");
+    if (key && key.blocked) return fail(res, 401, "Key is blocked. Update via `/key/unblock` if you're an admin.");
+    const out = openaiReply(body);
+    if (key) logCall(key, { model: body.model, ok: true, promptTok: out.usage.prompt_tokens, completionTok: out.usage.completion_tokens, spend: ((out.usage.prompt_tokens * 0.4 + out.usage.completion_tokens * 1.6) / 1e6) * 12 });
+    return ok(out);
+  }
   if ((req.headers.authorization || "") !== `Bearer ${MASTER}`) return fail(res, 401, "Authentication Error, Invalid proxy server token passed");
   if (p === "/v1/models") return ok({ data: modelNames().map((id) => ({ id, object: "model" })) });
 
@@ -468,21 +481,30 @@ function seed(dataDir) {
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "aiapi-mock-"));
 seed(dataDir);
 
+createFakeLlm().listen(LLM_PORT, "127.0.0.1");
+// 엘피를 흉내 Ollama 에 미리 연결해 둔다. 설정 화면 흐름을 보려면 MOCK_ASSISTANT=off.
+if (process.env.MOCK_ASSISTANT !== "off") {
+  fs.writeFileSync(path.join(dataDir, "assistant.json"), JSON.stringify({
+    enabled: true, mode: "direct", provider: "ollama", base_url: `http://127.0.0.1:${LLM_PORT}`, model: "qwen3:8b",
+    mask_names: true, allow_users: true,
+  }, null, 2));
+}
+
 lite.listen(LITE_PORT, "127.0.0.1", () => {
-  // 실제 server.js 를 띄운다. firebase-admin 만 스텁이다.
-  const fbPath = require.resolve("firebase-admin");
-  require.cache[fbPath] = {
-    id: fbPath, filename: fbPath, loaded: true,
-    exports: {
-      initializeApp() {},
-      auth: () => ({
-        async verifyIdToken(token) {
-          const email = String(token || "").startsWith("mock:") ? token.slice(5) : ADMIN;
-          return { email, email_verified: true };
-        },
-      }),
-    },
+  // 실제 server.js 를 띄운다. firebase-admin 의 app·auth 모듈만 스텁이다.
+  const stub = (id, exports) => {
+    const file = require.resolve(id);
+    require.cache[file] = { id: file, filename: file, loaded: true, exports };
   };
+  stub("firebase-admin/app", { initializeApp() {} });
+  stub("firebase-admin/auth", {
+    getAuth: () => ({
+      async verifyIdToken(token) {
+        const email = String(token || "").startsWith("mock:") ? token.slice(5) : ADMIN;
+        return { email, email_verified: true };
+      },
+    }),
+  });
   Object.assign(process.env, {
     PORT: String(PORT),
     FIREBASE_PROJECT_ID: "aiapi-mock",
@@ -493,12 +515,14 @@ lite.listen(LITE_PORT, "127.0.0.1", () => {
     USERS_DATA_PATH: path.join(dataDir, "users.json"),
     PROVIDER_KEYS_PATH: path.join(dataDir, "provider-keys.json"),
     AUDIT_LOG_PATH: path.join(dataDir, "audit.jsonl"),
+    ASSISTANT_DATA_PATH: path.join(dataDir, "assistant.json"),
     PUBLIC_PROXY_URL: process.env.PUBLIC_PROXY_URL || "http://192.168.0.10:4000",
   });
   require("./server.js");
   console.log(`admin-ui mock  http://127.0.0.1:${PORT}   (관리자)`);
   console.log(`               http://127.0.0.1:${PORT}/?as=${STUDENT}   (등록 사용자)`);
   console.log(`흉내 LiteLLM   http://127.0.0.1:${LITE_PORT}   데이터 ${dataDir}`);
+  console.log(`흉내 LLM       http://127.0.0.1:${LLM_PORT}   (Ollama·OpenAI 호환, AI 엘피용)`);
 
   if (SIMULATE) {
     const tick = () => {

@@ -60,7 +60,7 @@ services:
       litellm:
         condition: service_healthy
     healthcheck:
-      # node:20 내장 fetch. alpine에 wget/curl 없음
+      # node:22 내장 fetch. alpine에 wget/curl 없음
       test:
         [
           "CMD",

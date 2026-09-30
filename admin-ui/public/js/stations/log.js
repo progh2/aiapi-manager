@@ -17,20 +17,23 @@ export const ACTION_LABEL = {
   "provider.create": "공급자 키 등록", "provider.update": "공급자 키 수정", "provider.delete": "공급자 키 삭제",
   "pool.create": "묶음 등록", "pool.delete": "묶음 삭제",
   "user.create": "사용자 등록", "user.update": "사용자 수정", "user.delete": "사용자 삭제",
+  "assistant.config": "AI 엘피 설정",
 };
 const DETAIL_LABEL = {
   count: "개수", failed: "실패", budget: "예산", add_budget: "충전", add_days: "연장(일)", expires: "만료", models: "모델",
   team: "학급", team_id: "학급 id", reason: "사유", keys: "키", aliases: "대상", filter: "필터", action: "동작",
   retired_alias: "이전 별칭", schedule_keys: "시간표 반영 키", label: "이름", provider: "회사", secret_changed: "비밀 키 변경",
   members: "멤버", name: "이름", key_aliases: "연결 키", max_budget: "예산", rpm_limit: "RPM", tpm_limit: "TPM", duration: "기간",
+  enabled: "켜짐", mode: "방식", model: "모델", server: "서버", mask_names: "이름 가림", allow_users: "학생 상담", proxy_key_created: "전용 키 새로 만듦",
 };
 
 function detailText(d) {
   if (!d || typeof d !== "object") return d ? String(d) : "";
   return Object.entries(d).filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length)).map(([k, v]) => {
     const val = Array.isArray(v) ? (v.length > 6 ? `${v.slice(0, 6).join(", ")} 외 ${v.length - 6}` : v.join(", ")) : typeof v === "boolean" ? (v ? "예" : "아니오") : String(v);
+    if (k === "via") return "";
     return `${DETAIL_LABEL[k] || k} ${val}`;
-  }).join(" · ");
+  }).filter(Boolean).join(" · ");
 }
 
 export default {
@@ -168,7 +171,7 @@ export default {
       $("#au-rows").innerHTML = out.entries.map((e) => `<tr class="${e.ok ? "" : "bad"}">
         <td class="nowrap num">${esc(fmtDateTime(e.at))}</td>
         <td class="sec" style="font-size:12px">${esc(e.actor || "—")}</td>
-        <td><span class="tag ${/delete|lock|block|revoke/.test(e.action) ? "warn" : "info"}">${esc(ACTION_LABEL[e.action] || e.action)}</span></td>
+        <td><span class="tag ${/delete|lock|block|revoke/.test(e.action) ? "warn" : "info"}">${esc(ACTION_LABEL[e.action] || e.action)}</span>${e.detail && e.detail.via === "elfy" ? ' <span class="tag violet" title="AI 엘피의 제안 카드로 실행">엘피 제안</span>' : ""}</td>
         <td>${esc(e.target || "—")}</td>
         <td class="sec" style="font-size:12px;max-width:520px">${esc(detailText(e.detail))}</td></tr>`).join("") || '<tr><td colspan="5" class="tbl-empty">아직 기록이 없습니다. 이 업데이트 뒤의 관리 작업부터 남습니다.</td></tr>';
     } catch (e) { toastError(e, "작업 기록을 불러오지 못했습니다"); }

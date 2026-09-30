@@ -6,8 +6,9 @@ import {
 import { dailyBarChart, rankBarChart } from "../charts.js";
 import { toast, toastError } from "./lib/ui.js";
 import { say } from "./lib/holo.js";
+import { createElfy } from "./lib/assistant.js";
 
-export async function startPilot({ api, me, auth, proxyUrl, scene }) {
+export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}, saveSettings = () => {} }) {
   const root = $("#pilot");
   root.hidden = false;
   root.innerHTML = `
@@ -44,7 +45,7 @@ export async function startPilot({ api, me, auth, proxyUrl, scene }) {
           <div class="tbl-wrap"><table class="tbl"><thead><tr><th>시각</th><th>키</th><th>모델</th><th>결과</th><th class="r">토큰</th><th class="r">금액</th></tr></thead><tbody id="pl-calls"></tbody></table></div></section>
       </div>
     </section></main>
-    <footer class="foot"><span class="lbl">AIAPI · COCKPIT</span><span class="muted" style="font-size:12px">문제가 계속되면 선생님께 이 화면의 실패 이유를 알려 주세요.</span></footer>`;
+    <footer class="foot" id="pl-foot"><span class="lbl">AIAPI · COCKPIT</span><span class="muted" style="font-size:12px;flex:1">문제가 계속되면 선생님께 이 화면의 실패 이유를 알려 주세요.</span></footer>`;
 
   $("#pl-logout").onclick = () => auth.signOut().finally(() => location.reload());
   const tickClock = () => {
@@ -146,4 +147,19 @@ export async function startPilot({ api, me, auth, proxyUrl, scene }) {
     toastError(e, "내 정보를 불러오지 못했습니다");
   }
   setInterval(() => { if (document.visibilityState === "visible") loadCalls().catch(() => {}); }, 30000);
+
+  // 선생님이 켜 두었으면 학생도 엘피에게 자기 키 상황을 물어볼 수 있다.
+  try {
+    const cfg = await api("/api/assistant/config");
+    if (cfg && cfg.available) {
+      createElfy({
+        api,
+        role: "user",
+        host: $("#pl-foot"),
+        getStation: () => "pilot",
+        getSettings: () => settings,
+        saveSettings,
+      });
+    }
+  } catch { /* 엘피 없이 쓴다 */ }
 }

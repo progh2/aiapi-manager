@@ -13,6 +13,7 @@ export const STATION_LINES = {
   engines: ["dashboard", "공급자 회사 사이트에도 월 한도를 꼭 걸어 두세요. 여기 한도와 따로 요금이 나갈 수 있어요."],
   crew: ["users", "등록한 구글 계정만 들어와요. 학생은 연결된 키의 사용량만 봐요."],
   log: ["dashboard", "막힌 호출은 이유까지 보여 드려요. 학생에게 그대로 알려 주면 돼요."],
+  ai: ["welcome", "여기서 제 두뇌(언어 모델)를 연결해요. Ollama 나 ChatGPT API 키를 넣고 모델을 고르면 돼요!"],
 };
 
 let typingTimer = null;

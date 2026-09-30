@@ -1,0 +1,266 @@
+/* ==========================================================================
+   AI 엘피(대화창·런처·말풍선) · 09 AI 엘피 스테이션 · 전환 효과
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 전환 효과 */
+/* 스테이션에 들어오면 패널이 차례로 켜진다 */
+.station .enter-item { animation: panelIn 0.62s var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms + 110ms); }
+@keyframes panelIn {
+  0% { opacity: 0; transform: translateY(18px) scale(0.985); filter: blur(3px) brightness(1.7); }
+  55% { filter: none; }
+  100% { opacity: 1; transform: none; }
+}
+/* 무대를 가로지르는 스캔 빛줄기 */
+.stage::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -22%; width: 20%; z-index: 4; pointer-events: none; opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(95, 220, 255, 0.05) 55%, rgba(95, 220, 255, 0.28) 94%, rgba(190, 245, 255, 0.55) 97%, transparent);
+}
+.stage.sweep::after { animation: sweep 0.8s var(--ease) both; }
+@keyframes sweep { 0% { left: -22%; opacity: 0; } 12% { opacity: 1; } 100% { left: 104%; opacity: 0; } }
+/* HUD 화면 이름이 잠깐 흔들린다 */
+.hud-title .name.glitch { animation: glitch 0.5s steps(2, end) both; }
+@keyframes glitch {
+  0% { text-shadow: 2px 0 rgba(255, 60, 90, 0.8), -2px 0 rgba(60, 220, 255, 0.8); clip-path: inset(0 0 55% 0); transform: translateX(-2px); }
+  25% { text-shadow: -2px 0 rgba(255, 60, 90, 0.8), 2px 0 rgba(60, 220, 255, 0.8); clip-path: inset(45% 0 0 0); transform: translateX(2px); }
+  50% { text-shadow: 1px 0 rgba(255, 60, 90, 0.6), -1px 0 rgba(60, 220, 255, 0.6); clip-path: none; transform: none; }
+  100% { text-shadow: none; }
+}
+/* 창은 홀로그램처럼 가로줄에서 펼쳐진다 */
+.modal { animation: holoIn 0.42s var(--ease); }
+@keyframes holoIn {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.96, 0.02); filter: brightness(2.4); }
+  40% { opacity: 1; transform: translate(-50%, -50%) scale(1, 0.035); }
+  75% { transform: translate(-50%, -50%) scale(1, 1.012); filter: brightness(1.25); }
+  100% { transform: translate(-50%, -50%) scale(1); filter: none; }
+}
+.modal::after, .drawer::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; pointer-events: none; z-index: 3;
+  background: linear-gradient(90deg, transparent, var(--hud), transparent); box-shadow: 0 0 14px var(--hud);
+  animation: scanDown 0.7s 0.15s var(--ease) both;
+}
+@keyframes scanDown { 0% { top: 0; opacity: 1; } 100% { top: 100%; opacity: 0; } }
+.drawer { animation: drawerIn 0.36s var(--ease); }
+@keyframes drawerIn { 0% { transform: translateX(46px); opacity: 0; filter: brightness(1.8); } 100% { transform: none; opacity: 1; filter: none; } }
+body.reduce-motion .station .enter-item,
+body.reduce-motion .stage.sweep::after,
+body.reduce-motion .hud-title .name.glitch,
+body.reduce-motion .modal::after,
+body.reduce-motion .drawer::after { animation: none !important; }
+body.reduce-motion .modal { animation: fade 0.15s; }
+body.reduce-motion .drawer { animation: fade 0.15s; }
+
+/* ---------------------------------------------------------------- 런처(하단 줄의 엘피) */
+.elfy-launch {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px 0 4px; margin-left: 4px; flex: none;
+  border: 1px solid var(--line-2); border-radius: 999px; background: linear-gradient(90deg, rgba(95, 220, 255, 0.14), rgba(95, 220, 255, 0.04));
+  color: var(--text-primary); cursor: pointer; font: inherit; transition: 0.2s;
+}
+.elfy-launch:hover, .elfy-launch[aria-expanded="true"] { border-color: var(--hud); box-shadow: 0 0 18px rgba(95, 220, 255, 0.35); }
+.elfy-launch:focus-visible { outline: 2px solid var(--hud); outline-offset: 2px; }
+.elfy-lbl { display: flex; flex-direction: column; line-height: 1.1; text-align: left; }
+.elfy-lbl b { font-size: 12px; }
+.elfy-lbl small { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.elfy-badge {
+  position: absolute; top: -5px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--status-critical); color: #fff; font: 700 11px/18px var(--font-sans); text-align: center; box-shadow: 0 0 10px var(--status-critical);
+}
+.elfy-fig { position: relative; width: 34px; height: 34px; flex: none; display: grid; place-items: center; }
+.elfy-fig img {
+  width: 100%; height: 100%; object-fit: contain; position: relative; z-index: 1;
+  filter: drop-shadow(0 0 6px rgba(80, 210, 255, 0.6)) brightness(1.15) saturate(1.35);
+  animation: elfyFloat 3.6s ease-in-out infinite, holoFlicker 6s infinite;
+}
+.elfy-fig .ring { position: absolute; inset: -2px; border-radius: 50%; border: 1px solid rgba(95, 220, 255, 0.35); }
+.elfy-fig.big { width: 52px; height: 52px; }
+@keyframes elfyFloat { 50% { transform: translateY(-3px); } }
+[data-state="thinking"] .elfy-fig .ring { border-color: transparent; border-top-color: var(--hud); border-right-color: var(--hud); animation: spin 0.9s linear infinite; box-shadow: 0 0 10px rgba(95, 220, 255, 0.35); }
+[data-state="done"] .elfy-fig .ring { border-color: var(--status-good); box-shadow: 0 0 12px var(--status-good); }
+[data-state="off"] .elfy-fig img { filter: grayscale(0.85) brightness(0.8); animation: none; }
+.elfy-launch[data-state="off"] { background: rgba(95, 220, 255, 0.03); }
+.elfy-launch.hop .elfy-fig img { animation: elfyHop 0.55s var(--ease), holoFlicker 6s infinite; }
+@keyframes elfyHop { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-7px) scale(1.08); } 70% { transform: translateY(1px) scale(0.97); } 100% { transform: none; } }
+body.reduce-motion .elfy-fig img { animation: none !important; }
+body.reduce-motion [data-state="thinking"] .elfy-fig .ring { animation: none; }
+
+/* ---------------------------------------------------------------- 말풍선 */
+.elfy-bubble {
+  position: fixed; z-index: 46; right: 16px; bottom: calc(var(--foot-h) + 12px); width: min(360px, calc(100vw - 32px));
+  padding: 11px 13px 10px; border-radius: 8px 8px 2px 8px; border: 1px solid var(--line-2); background: rgba(6, 18, 34, 0.97);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(95, 220, 255, 0.18); font-size: 13px; line-height: 1.55;
+  animation: bubbleIn 0.35s var(--ease);
+}
+.elfy-bubble .who { font: 600 9px/1 var(--font-display); letter-spacing: 0.24em; color: var(--hud); margin-bottom: 5px; }
+.elfy-bubble .acts { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+.elfy-bubble.crit { border-color: rgba(208, 59, 59, 0.75); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(208, 59, 59, 0.3); }
+.elfy-bubble.crit .who { color: #ff9a9a; }
+.elfy-bubble.warn { border-color: rgba(250, 178, 25, 0.6); }
+.elfy-bubble.warn .who { color: var(--status-warning); }
+@keyframes bubbleIn { from { opacity: 0; transform: translateY(10px) scale(0.97); transform-origin: bottom right; } }
+
+/* ---------------------------------------------------------------- 대화창 */
+.elfy-panel {
+  position: fixed; z-index: 45; right: 16px; bottom: calc(var(--foot-h) + 12px);
+  width: min(440px, calc(100vw - 24px)); height: min(680px, calc(100vh - var(--hud-h) - var(--foot-h) - 36px));
+  display: flex; flex-direction: column; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--line-2); background: linear-gradient(180deg, rgba(10, 26, 48, 0.97), rgba(5, 14, 27, 0.98));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 36px rgba(95, 220, 255, 0.18);
+  transform-origin: bottom right; animation: elfyOpen 0.38s var(--ease);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.elfy-panel[hidden] { display: none; }
+.elfy-panel.closing { animation: elfyClose 0.2s ease-in forwards; }
+@keyframes elfyOpen { 0% { opacity: 0; transform: scale(0.92, 0.04); filter: brightness(2); } 45% { opacity: 1; transform: scale(1, 0.06); } 100% { transform: none; filter: none; } }
+@keyframes elfyClose { to { opacity: 0; transform: scale(1, 0.05); } }
+body.reduce-motion .elfy-panel, body.reduce-motion .elfy-panel.closing, body.reduce-motion .elfy-bubble { animation: none; }
+.elfy-panel::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: 0.5;
+  background: repeating-linear-gradient(0deg, rgba(95, 220, 255, 0.03) 0 1px, transparent 1px 4px);
+}
+.elfy-panel > * { position: relative; z-index: 1; }
+.elfy-h { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: rgba(12, 30, 54, 0.7); }
+.elfy-title { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+.elfy-title .code { font: 600 9px/1 var(--font-display); letter-spacing: 0.24em; color: var(--hud-dim); }
+.elfy-title b { font-size: 15px; }
+.elfy-status { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.elfy-tools { display: flex; gap: 4px; }
+.elfy-tools .icon-btn { width: 30px; height: 30px; }
+.elfy-log { flex: 1; overflow-y: auto; padding: 14px 12px 8px; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
+.elfy-log .msg { display: flex; }
+.elfy-log .msg .bub { max-width: 88%; padding: 9px 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.6; word-break: break-word; }
+.elfy-log .msg.user { justify-content: flex-end; }
+.elfy-log .msg.user .bub { background: linear-gradient(180deg, #1b86b8, #126a93); color: #fff; border-bottom-right-radius: 3px; }
+.elfy-log .msg.elfy .bub { background: rgba(9, 24, 44, 0.9); border: 1px solid var(--line-2); border-bottom-left-radius: 3px; box-shadow: inset 0 0 18px rgba(95, 220, 255, 0.05); }
+.elfy-log .msg.elfy .bub p { margin: 0 0 6px; }
+.elfy-log .msg.elfy .bub p:last-child { margin-bottom: 0; }
+.elfy-log .msg.elfy .bub ul { margin: 4px 0 6px; padding-left: 18px; }
+.elfy-log .msg.elfy .bub li { margin: 2px 0; }
+.elfy-log .msg.elfy .bub b { color: #bff0ff; }
+.elfy-log .msg.elfy .bub code { font-family: var(--font-mono); font-size: 12px; background: rgba(0, 0, 0, 0.3); padding: 1px 4px; border-radius: 3px; }
+.elfy-log .msg.elfy .bub.typing { white-space: pre-wrap; }
+.elfy-log .msg.elfy .bub.typing::after { content: ""; display: inline-block; width: 7px; height: 13px; margin-left: 2px; vertical-align: -2px; background: var(--hud); animation: ledPulse 0.8s steps(1) infinite; }
+.elfy-log .thinking { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary); padding: 2px 4px; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--hud); box-shadow: 0 0 8px var(--hud); animation: dot 1.1s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: 0.15s; }
+.dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+body.reduce-motion .dots i { animation: none; opacity: 0.8; }
+.elfy-log .trace { font-size: 11.5px; color: var(--text-muted); border-left: 2px solid var(--line-2); padding: 2px 0 2px 10px; display: flex; flex-direction: column; gap: 3px; }
+.elfy-log .trace div { display: flex; align-items: center; gap: 7px; }
+.elfy-log .trace .led { width: 6px; height: 6px; }
+.elfy-log .note { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; color: var(--text-secondary); padding: 7px 10px; border-radius: 6px; border: 1px dashed var(--line-2); }
+.elfy-log .note .ic { width: 14px; height: 14px; flex: none; margin-top: 2px; color: var(--hud); }
+.elfy-log .note.crit { border-color: rgba(208, 59, 59, 0.6); color: #ffd0d0; }
+.elfy-log .note.crit .ic { color: var(--status-critical); }
+.elfy-log .note.warn { border-color: rgba(250, 178, 25, 0.5); }
+.elfy-log .meta { font: 10.5px/1.3 var(--font-mono); color: var(--text-muted); text-align: left; padding-left: 4px; margin-top: -4px; }
+/* 제안 카드 */
+.elfy-log .proposal {
+  border: 1px solid var(--hud); border-radius: 8px; padding: 11px 12px; background: linear-gradient(180deg, rgba(20, 70, 110, 0.35), rgba(8, 22, 40, 0.9));
+  box-shadow: 0 0 22px rgba(95, 220, 255, 0.15); animation: panelIn 0.45s var(--ease) both;
+}
+.elfy-log .proposal.danger { border-color: rgba(236, 100, 100, 0.8); background: linear-gradient(180deg, rgba(120, 30, 30, 0.35), rgba(8, 22, 40, 0.9)); box-shadow: 0 0 22px rgba(208, 59, 59, 0.2); }
+.elfy-log .proposal.warn { border-color: rgba(250, 178, 25, 0.7); }
+.elfy-log .proposal .p-h { display: flex; flex-direction: column; gap: 4px; }
+.elfy-log .proposal .p-h .code { font: 600 9px/1 var(--font-display); letter-spacing: 0.22em; color: var(--hud-dim); }
+.elfy-log .proposal.danger .p-h .code { color: #ff9a9a; }
+.elfy-log .proposal .p-h b { font-size: 14px; }
+.elfy-log .proposal .p-sum { font-size: 12.5px; color: var(--text-secondary); margin: 5px 0 6px; line-height: 1.5; }
+.elfy-log .proposal .p-lines { margin: 0 0 8px; padding: 6px 8px 6px 22px; font: 11.5px/1.6 var(--font-mono); color: var(--text-secondary); background: rgba(0, 0, 0, 0.25); border-radius: 5px; max-height: 170px; overflow: auto; }
+.elfy-log .proposal .p-typed { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+.elfy-log .proposal .p-typed input { padding: 5px 8px; }
+.elfy-log .proposal .p-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.elfy-log .proposal .p-result { margin-top: 8px; font-size: 12.5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.elfy-log .proposal .p-result .ic { width: 15px; height: 15px; }
+.elfy-log .proposal.done { border-color: var(--status-good); box-shadow: 0 0 22px rgba(12, 163, 12, 0.22); }
+.elfy-log .proposal.done .p-result { color: #c9f4c9; }
+.elfy-log .proposal.failed .p-result { color: #ffd0d0; }
+.elfy-log .proposal.cancelled { opacity: 0.6; border-style: dashed; }
+.elfy-chips { display: flex; gap: 6px; overflow-x: auto; padding: 4px 12px 8px; scrollbar-width: thin; }
+.elfy-chips:empty { display: none; }
+.elfy-chips .chip { white-space: nowrap; flex: none; }
+.elfy-chips .chip:hover { border-color: var(--hud); color: var(--text-primary); }
+.elfy-input { display: flex; gap: 6px; align-items: flex-end; padding: 8px 10px; border-top: 1px solid var(--line); background: rgba(4, 12, 24, 0.8); }
+.elfy-input textarea { font-family: var(--font-sans); font-size: 13.5px; resize: none; min-height: 38px; max-height: 140px; line-height: 1.45; padding: 8px 10px; }
+.elfy-input .btn { height: 38px; padding: 0 12px; }
+.elfy-input .icon-btn { height: 38px; width: 38px; }
+.elfy-input .icon-btn[aria-pressed="true"] { color: #fff; background: rgba(208, 59, 59, 0.5); border-color: #ff7b7b; animation: ledPulse 1.2s infinite; }
+.elfy-foot { font-size: 10.5px; color: var(--text-muted); padding: 0 12px 8px; background: rgba(4, 12, 24, 0.8); }
+
+/* ---------------------------------------------------------------- 09 AI 엘피 스테이션 */
+.ai-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: minmax(290px, 340px) minmax(0, 1fr) minmax(0, 0.9fr);
+  grid-template-areas: "core conn side" "guide guide guide";
+  align-items: start;
+}
+.ai-core { grid-area: core; }
+.ai-conn { grid-area: conn; }
+.ai-side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ai-guide { grid-area: guide; }
+@media (max-width: 1280px) { .ai-grid { grid-template-columns: minmax(270px, 320px) minmax(0, 1fr); grid-template-areas: "core conn" "side side" "guide guide"; } .ai-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+@media (max-width: 860px) { .ai-grid { grid-template-columns: 1fr; grid-template-areas: "core" "conn" "side" "guide"; } .ai-side { display: flex; } }
+.ai-orb { position: relative; width: 170px; height: 170px; margin: 4px auto 6px; display: grid; place-items: center; }
+.ai-orb img { width: 128px; height: 128px; object-fit: contain; position: relative; z-index: 1; filter: drop-shadow(0 0 12px rgba(80, 210, 255, 0.6)) brightness(1.15) saturate(1.35); animation: elfyFloat 4s ease-in-out infinite, holoFlicker 6s infinite; }
+.ai-orb .rings { position: absolute; inset: 0; }
+.ai-orb .rings i { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(95, 220, 255, 0.35); animation: orbit 9s linear infinite; }
+.ai-orb .rings i:nth-child(1) { transform: rotateX(70deg); }
+.ai-orb .rings i:nth-child(2) { inset: 12px; border-style: dashed; border-color: rgba(95, 220, 255, 0.25); animation-duration: 14s; animation-direction: reverse; }
+.ai-orb .rings i:nth-child(3) { inset: 26px; border-color: rgba(95, 220, 255, 0.18); box-shadow: 0 0 40px rgba(95, 220, 255, 0.18) inset; animation: none; }
+@keyframes orbit { to { transform: rotate(360deg); } }
+.ai-orb[data-state="thinking"] .rings i:nth-child(1) { border-top-color: var(--hud); animation-duration: 1.2s; }
+.ai-orb[data-state="thinking"] .rings i:nth-child(2) { animation-duration: 2s; border-color: rgba(95, 220, 255, 0.5); }
+.ai-orb[data-state="done"] .rings i:nth-child(3) { box-shadow: 0 0 40px rgba(12, 163, 12, 0.35) inset; border-color: rgba(12, 163, 12, 0.5); }
+.ai-orb[data-state="off"] img { filter: grayscale(0.9) brightness(0.7); animation: none; }
+.ai-orb[data-state="off"] .rings i { animation-play-state: paused; opacity: 0.4; }
+body.reduce-motion .ai-orb img, body.reduce-motion .ai-orb .rings i { animation: none; }
+.ai-test { margin-top: 12px; font-size: 12.5px; line-height: 1.55; border-radius: 6px; }
+.ai-test:empty { display: none; }
+.ai-test.run, .ai-test.ok, .ai-test.warn, .ai-test.bad { padding: 9px 11px; border: 1px solid var(--line-2); background: rgba(6, 16, 30, 0.6); }
+.ai-test.run { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); }
+.ai-test.ok { border-color: rgba(12, 163, 12, 0.6); }
+.ai-test.warn { border-color: rgba(250, 178, 25, 0.6); }
+.ai-test.bad { border-color: rgba(208, 59, 59, 0.6); }
+.ai-test .t { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.ai-test .t .ic { width: 15px; height: 15px; }
+.ai-test .q { margin-top: 5px; color: var(--text-primary); font-style: italic; }
+.ai-test .n { margin-top: 5px; color: var(--text-secondary); font-size: 12px; }
+.ai-usage { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.ai-usage .k { font-size: 12px; color: var(--text-secondary); }
+.ai-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ai-kind {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px; border-radius: 6px; cursor: pointer; font: inherit;
+  border: 1px solid var(--line); background: rgba(6, 16, 30, 0.6); color: var(--text-secondary); transition: 0.15s;
+}
+.ai-kind b { font-size: 13px; color: var(--text-primary); }
+.ai-kind small { font-size: 11px; color: var(--text-muted); }
+.ai-kind:hover { border-color: var(--line-2); }
+.ai-kind[aria-checked="true"] { border-color: var(--hud); background: rgba(95, 220, 255, 0.12); box-shadow: 0 0 16px rgba(95, 220, 255, 0.2); }
+.ai-kind[aria-checked="true"] b { color: var(--hud); }
+.ai-kind:focus-visible { outline: 2px solid var(--hud); outline-offset: 2px; }
+.ai-models { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 360px; overflow: auto; }
+.ai-model { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px 8px 34px; border: 1px solid var(--line); border-radius: 6px; background: rgba(6, 16, 30, 0.55); cursor: pointer; position: relative; }
+.ai-model input { position: absolute; left: 12px; top: 11px; }
+.ai-model:hover { border-color: var(--line-2); }
+.ai-model.sel { border-color: var(--hud); background: rgba(95, 220, 255, 0.1); }
+.ai-model[data-grade="0"] { opacity: 0.72; }
+.mo-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.mo-h b { font-family: var(--font-mono); font-size: 12.5px; }
+.mo-s { font-size: 11.5px; color: var(--text-muted); }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch .sl { width: 38px; height: 20px; border-radius: 10px; background: #1a2d44; border: 1px solid var(--line-2); position: relative; transition: 0.2s; }
+.switch .sl::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-muted); transition: 0.2s; }
+.switch input:checked + .sl { background: rgba(95, 220, 255, 0.35); border-color: var(--hud); box-shadow: 0 0 12px rgba(95, 220, 255, 0.35); }
+.switch input:checked + .sl::after { left: 20px; background: #fff; }
+.switch input:focus-visible + .sl { outline: 2px solid var(--hud); outline-offset: 2px; }
+.ai-notes { margin: 12px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; color: var(--text-secondary); }
+.ai-notes li { margin-bottom: 4px; }
+.ai-notes a { color: var(--hud); }
+input[type="range"] { padding: 0; accent-color: var(--hud-2); }
+
+@media (max-width: 760px) {
+  .elfy-lbl { display: none; }
+  .elfy-launch { padding: 0 4px; }
+  .elfy-panel { right: 8px; left: 8px; width: auto; }
+}

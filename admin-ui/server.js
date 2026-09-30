@@ -3,7 +3,9 @@
 // LITELLM_MASTER_KEY는 이 서버에만 존재하며 브라우저로 나가지 않는다.
 const express = require("express");
 const path = require("path");
-const admin = require("firebase-admin");
+// firebase-admin 14 에는 네임스페이스 API(admin.auth)가 없다. 모듈 API 를 쓴다.
+const { initializeApp } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
 const { UsersStore } = require("./lib/users-store");
 const { checkAlias } = require("./lib/aliases");
 const { assignClassBudgets, keyGenerateParams } = require("./lib/class-assign");
@@ -20,6 +22,8 @@ const { AuditLog } = require("./lib/audit-log");
 const { toActivity, summarizeActivity, activityQuery, rowsOf } = require("./lib/activity");
 const { adjustKeys } = require("./lib/key-adjust");
 const { lockdownTeam, liftLockdown } = require("./lib/lockdown");
+const { AssistantStore } = require("./lib/assistant/store");
+const { mountAssistant } = require("./lib/assistant/routes");
 const { version: APP_VERSION } = require("./package.json");
 
 const {
@@ -32,6 +36,7 @@ const {
   USERS_DATA_PATH = path.join(__dirname, "data", "users.json"),
   PROVIDER_KEYS_PATH = path.join(__dirname, "data", "provider-keys.json"),
   AUDIT_LOG_PATH = path.join(__dirname, "data", "audit.jsonl"),
+  ASSISTANT_DATA_PATH = path.join(__dirname, "data", "assistant.json"),
   // 학생에게 안내할 프록시 주소. 비우면 화면이 접속 주소와 LITELLM_PORT 로 만든다.
   PUBLIC_PROXY_URL = "",
   LITELLM_PORT = "4000",
@@ -44,7 +49,7 @@ if (!FIREBASE_PROJECT_ID || !LITELLM_MASTER_KEY) {
 }
 
 // ID 토큰 검증만 하므로 서비스 계정 키 없이 projectId만으로 초기화
-admin.initializeApp({ projectId: FIREBASE_PROJECT_ID });
+initializeApp({ projectId: FIREBASE_PROJECT_ID });
 
 const adminEmails = new Set(
   ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
@@ -52,6 +57,7 @@ const adminEmails = new Set(
 const usersStore = new UsersStore(USERS_DATA_PATH);
 const providerStore = new ProviderKeyStore(PROVIDER_KEYS_PATH);
 const auditLog = new AuditLog(AUDIT_LOG_PATH);
+const assistantStore = new AssistantStore(ASSISTANT_DATA_PATH);
 const STARTED_AT = Date.now();
 const firebaseClientConfig = {
   apiKey: FIREBASE_API_KEY || "REPLACE_ME",
@@ -91,17 +97,20 @@ function isAdminEmail(email) {
 }
 
 // 관리 작업을 컨테이너 로그와 audit.jsonl 에 함께 남긴다.
+// AI 엘피의 제안 카드로 실행한 작업은 화면이 X-AIAPI-Via: elfy 를 붙여 보낸다.
 function record(req, action, target, detail, message) {
   const actor = req.adminEmail || (req.user && req.user.email) || null;
-  if (message) console.log(`${actor} 이(가) ${message}`);
-  return auditLog.append({ actor, action, target, detail });
+  const viaElfy = req.get && req.get("x-aiapi-via") === "elfy";
+  if (message) console.log(`${actor} 이(가) ${message}${viaElfy ? " (엘피 제안)" : ""}`);
+  const d = viaElfy ? { ...(detail && typeof detail === "object" ? detail : {}), via: "elfy" } : detail;
+  return auditLog.append({ actor, action, target, detail: d });
 }
 
 async function verifyToken(req) {
   const token = (req.headers.authorization || "").replace(/^Bearer /, "");
   if (!token) return null;
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    const decoded = await getAuth().verifyIdToken(token);
     if (!decoded.email_verified) return null;
     return decoded;
   } catch {
@@ -365,34 +374,50 @@ app.post("/api/keys/camp/revoke", requireAdmin, async (req, res) => {
 // 일별 지출 시계열 + 키/모델별 집계. LiteLLM의 /user/daily/activity는
 // 오픈소스에서 쓸 수 있는 집계 엔드포인트다(/global/spend/report는 엔터프라이즈 전용).
 
+// 페이지를 모두 돌아 기간 내 일별 레코드를 모은다.
+async function dailyActivity(start, end) {
+  const results = [];
+  for (let page = 1; page <= 100; page++) {
+    const d = await litellm(
+      `/user/daily/activity?start_date=${ymd(start)}&end_date=${ymd(end)}&page=${page}&page_size=100`
+    );
+    results.push(...(d.results || []));
+    const total = d.metadata?.total_pages || d.total_pages || 1;
+    if (page >= total) break;
+  }
+  return results;
+}
+
+async function analyticsFor({ days = 30, horizon = 14, teamId = "" } = {}) {
+  const end = new Date();
+  const start = new Date(end.getTime() - (days - 1) * DAY_MS);
+  const results = await dailyActivity(start, end);
+  // 키 해시 → 별칭/그룹 이름으로 치환
+  const [keyList, teams] = await Promise.all([fetchAllKeys(), listTeams()]);
+  if (teamId && !teams.some((t) => t.team_id === teamId)) {
+    const err = new Error("알 수 없는 학급/조입니다");
+    err.status = 400;
+    throw err;
+  }
+  return buildAnalytics({ results, keyList, teams, start, end, horizon, teamId });
+}
+
 app.get("/api/analytics", requireAdmin, async (req, res) => {
   const days = Math.min(180, Math.max(7, Number(req.query.days) || 30));
   const horizon = Math.min(90, Math.max(1, Number(req.query.horizon) || 14));
   const teamId = String(req.query.team_id || "");
-  const end = new Date();
-  const start = new Date(end.getTime() - (days - 1) * DAY_MS);
   try {
-    // 페이지를 모두 돌아 기간 내 일별 레코드를 수집
-    const results = [];
-    for (let page = 1; ; page++) {
-      const d = await litellm(
-        `/user/daily/activity?start_date=${ymd(start)}&end_date=${ymd(end)}&page=${page}&page_size=100`
-      );
-      results.push(...(d.results || []));
-      const total = d.metadata?.total_pages || d.total_pages || 1;
-      if (page >= total) break;
-    }
-
-    // 키 해시 → 별칭/그룹 이름으로 치환
-    const [keyList, teams] = await Promise.all([fetchAllKeys(), listTeams()]);
-    if (teamId && !teams.some((t) => t.team_id === teamId)) {
-      return res.status(400).json({ error: "알 수 없는 학급/조입니다" });
-    }
-    res.json(buildAnalytics({ results, keyList, teams, start, end, horizon, teamId }));
+    res.json(await analyticsFor({ days, horizon, teamId }));
   } catch (e) {
-    res.status(502).json({ error: e.message });
+    res.status(e.status || 502).json({ error: e.message });
   }
 });
+
+async function providersPublic() {
+  const keys = await fetchAllKeys();
+  const stored = providerStore.isCorrupt() ? [] : providerStore.list();
+  return [envProvider(), ...stored.map((r) => toPublic(r, spendFor(r, keys)))];
+}
 
 // 공급자 API 키. 같은 회사 키도 슬러그만 다르면 여러 개 등록한다.
 // 응답에는 비밀 키를 넣지 않는다.
@@ -401,9 +426,8 @@ app.get("/api/provider-keys", requireAdmin, async (req, res) => {
     return res.status(503).json({ error: "provider-keys.json이 손상되었습니다" });
   }
   try {
-    const keys = await fetchAllKeys();
     res.json({
-      keys: [envProvider(), ...providerStore.list().map((r) => toPublic(r, spendFor(r, keys)))],
+      keys: await providersPublic(),
       providers: Object.entries(PROVIDERS).map(([id, spec]) => ({
         id,
         label: spec.label,
@@ -745,20 +769,25 @@ app.post("/api/teams/lockdown", requireAdmin, async (req, res) => {
   }
 });
 
+// 최근 호출. 키 상세에서는 한 키의 호출만 본다. LiteLLM 은 해시 토큰으로 거른다.
+async function activityItems({ limit = 60, hours = 24, status = "", token = "" } = {}) {
+  let query = activityQuery({ limit, hours, status });
+  if (token) query += `&api_key=${encodeURIComponent(String(token))}`;
+  const data = await litellm(query);
+  const teams = await listTeams().catch(() => []);
+  const teamsById = new Map(teams.map((t) => [t.team_id, t]));
+  return rowsOf(data).map((row) => toActivity(row, { teamsById }));
+}
+
 // 최근 호출. 프롬프트와 응답은 주지 않는다.
 app.get("/api/activity", requireAdmin, async (req, res) => {
   try {
-    let query = activityQuery({
+    const items = await activityItems({
       limit: req.query.limit,
       hours: req.query.hours,
       status: String(req.query.status || ""),
+      token: req.query.token ? String(req.query.token) : "",
     });
-    // 키 상세에서 한 키의 호출만 본다. LiteLLM 은 해시 토큰으로 거른다.
-    if (req.query.token) query += `&api_key=${encodeURIComponent(String(req.query.token))}`;
-    const data = await litellm(query);
-    const teams = await listTeams().catch(() => []);
-    const teamsById = new Map(teams.map((t) => [t.team_id, t]));
-    const items = rowsOf(data).map((row) => toActivity(row, { teamsById }));
     res.json({ items, summary: summarizeActivity(items), at: new Date().toISOString() });
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -799,7 +828,12 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       users: { ok: !usersStore.isCorrupt(), count: usersStore.isCorrupt() ? null : usersStore.list().length },
       providers: { ok: !providerStore.isCorrupt(), count: providerStore.isCorrupt() ? null : providerStore.list().length },
       audit: { count: auditLog.size() },
+      assistant: { ok: !assistantStore.isCorrupt() },
     },
+    assistant: (() => {
+      const a = assistantStore.publicView();
+      return { enabled: a.enabled, ready: a.ready, model: a.mode === "proxy" ? a.proxy_model : a.model, mode: a.mode, provider: a.provider };
+    })(),
     proxy_url: PUBLIC_PROXY_URL || null,
     proxy_port: Number(LITELLM_PORT) || 4000,
   });
@@ -926,6 +960,24 @@ app.post("/api/users/delete", requireAdmin, (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+mountAssistant(app, {
+  store: assistantStore,
+  requireAdmin,
+  requireRegistered,
+  record,
+  litellm,
+  fetchAllKeys,
+  listTeams,
+  providersPublic,
+  activityItems,
+  analytics: analyticsFor,
+  auditLog,
+  usersStore,
+  proxyBase: LITELLM_BASE_URL,
+  masterKey: LITELLM_MASTER_KEY,
+  publicProxyUrl: (req) => PUBLIC_PROXY_URL || `${req.protocol}://${req.hostname}:${Number(LITELLM_PORT) || 4000}`,
 });
 
 app.listen(PORT, () => console.log(`admin-ui listening on :${PORT}`));

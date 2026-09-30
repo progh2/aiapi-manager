@@ -1,5 +1,6 @@
 // 스테이션 전환·해시 주소·관제 모드(자동 순환).
 import { $, esc, icon } from "./util.js";
+import * as sfx from "./sfx.js";
 
 export const STATIONS = [
   { id: "bridge", no: "01", code: "BRIDGE", label: "개요", icon: "bridge", display: true, veil: 0 },
@@ -10,7 +11,38 @@ export const STATIONS = [
   { id: "engines", no: "06", code: "ENGINE ROOM", label: "공급자", icon: "engine", display: true, veil: 0.4 },
   { id: "crew", no: "07", code: "CREW", label: "사용자", icon: "crew", display: false, veil: 0.6 },
   { id: "log", no: "08", code: "SHIP LOG", label: "기록", icon: "log", display: true, veil: 0.6 },
+  { id: "ai", no: "09", code: "AI CORE", label: "AI 엘피", icon: "elfy", display: false, veil: 0.62 },
 ];
+
+// 스테이션에 들어올 때 패널이 차례로 켜진다. 안쪽 패널까지 따로 움직이면 어지러워 바깥 덩어리만 고른다.
+const ENTER_SEL = ".st-head, .tabs, .panel, .card, .tile, .bulkbar";
+function stagger(station) {
+  if (document.body.classList.contains("reduce-motion")) return;
+  const items = [...station.querySelectorAll(ENTER_SEL)].filter((el) => {
+    const outer = el.parentElement && el.parentElement.closest(ENTER_SEL);
+    return !outer || !station.contains(outer);
+  }).slice(0, 18);
+  for (const el of station.querySelectorAll(".enter-item")) el.classList.remove("enter-item");
+  void station.offsetWidth;
+  items.forEach((el, i) => {
+    el.style.setProperty("--i", String(i));
+    el.classList.add("enter-item");
+  });
+  clearTimeout(station._enterTimer);
+  station._enterTimer = setTimeout(() => items.forEach((el) => el.classList.remove("enter-item")), 1600);
+  const stage = $("#stage");
+  if (stage) {
+    stage.classList.remove("sweep");
+    void stage.offsetWidth;
+    stage.classList.add("sweep");
+  }
+  const name = $("#hud-name");
+  if (name) {
+    name.classList.remove("glitch");
+    void name.offsetWidth;
+    name.classList.add("glitch");
+  }
+}
 
 const byId = Object.fromEntries(STATIONS.map((s, i) => [s.id, { ...s, index: i }]));
 
@@ -49,6 +81,7 @@ export function createRouter({ onEnter, getSettings, onAutoChange }) {
   function go(id, params = {}, { user = false, replace = false } = {}) {
     if (!byId[id]) id = "bridge";
     if (user) pauseAuto();
+    if (user && id !== current) sfx.play("nav");
     const prevId = current;
     currentParams = params || {};
     const url = hashFor(id, currentParams);
@@ -82,6 +115,7 @@ export function createRouter({ onEnter, getSettings, onAutoChange }) {
     }
     current = id;
     onEnter(id, currentParams, { same: false, prev: prevId, forward });
+    stagger(next);
   }
 
   window.addEventListener("popstate", () => {

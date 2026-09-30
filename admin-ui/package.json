@@ -5,15 +5,23 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test lib/*.test.js",
+    "test": "node --test lib/*.test.js lib/assistant/*.test.js",
     "mock": "node dev-mock.js"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/orbitron": "^5.3.0",
     "@fontsource/pretendard": "^5.3.0",
-    "express": "^4.19.2",
-    "firebase-admin": "^12.3.0",
+    "express": "^4.22.3",
+    "firebase-admin": "^14.5.0",
     "three": "^0.186.1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "gaxios": {
+      "uuid": "^11.1.1"
+    }
   }
 }

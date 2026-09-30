@@ -8,6 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='5' fill='%235fdcff'/%3E%3Cellipse cx='16' cy='16' rx='14' ry='6' fill='none' stroke='%235fdcff' stroke-width='2' transform='rotate(-25 16 16)'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/css/fonts.css">
   <link rel="stylesheet" href="/css/bridge.css">
+  <link rel="stylesheet" href="/css/elfy.css">
   <script type="importmap">{ "imports": { "three": "/vendor/three/three.module.js" } }</script>
 </head>
 <body>
@@ -42,6 +43,12 @@
       <symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.6 0-2.7.9-2.7 2s1 1.6 2.7 2c1.8.4 2.8 1 2.8 2.1s-1.2 2-2.8 2c-1.2 0-2.2-.5-2.7-1.4M12 6.5V8M12 16v1.5"/></symbol>
       <symbol id="i-cycle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6"/><path d="M18 3v4h-4M6 21v-4h4"/><circle cx="12" cy="12" r="2.2"/></symbol>
       <symbol id="i-cube" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></symbol>
+      <symbol id="i-elfy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/><path d="M5 16.5c1 1.8 2.7 3 4.8 3.4"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+      <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
       <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></symbol>
     </defs>
   </svg>
@@ -90,6 +97,7 @@
         <button class="icon-btn" id="btn-cmd" type="button" title="명령 팔레트 (Ctrl+K)"><svg><use href="#i-cmd"/></svg></button>
         <button class="icon-btn" id="btn-auto" type="button" aria-pressed="false" title="관제 모드 — 화면 자동 순환 (A)"><svg><use href="#i-cycle"/></svg></button>
         <button class="icon-btn" id="btn-3d" type="button" aria-pressed="true" title="3D 관제도 켜기/끄기"><svg><use href="#i-cube"/></svg></button>
+        <button class="icon-btn" id="btn-sound" type="button" aria-pressed="true" title="효과음 켜기/끄기 (M)"><svg><use href="#i-volume"/></svg></button>
         <button class="icon-btn" id="btn-full" type="button" title="전체 화면 (F)"><svg><use href="#i-full"/></svg></button>
         <button class="icon-btn" id="btn-settings" type="button" title="설정"><svg><use href="#i-gear"/></svg></button>
         <button class="icon-btn" id="btn-help" type="button" title="단축키 (?)"><svg><use href="#i-help"/></svg></button>
@@ -106,9 +114,9 @@
       <section class="station" id="st-engines" data-station="engines" aria-label="공급자"></section>
       <section class="station" id="st-crew" data-station="crew" aria-label="사용자"></section>
       <section class="station" id="st-log" data-station="log" aria-label="기록"></section>
+      <section class="station" id="st-ai" data-station="ai" aria-label="AI 엘피"></section>
     </main>
-    <footer class="foot">
-      <div class="holo"><div class="holo-fig"><img id="foot-holo" src="/mascot/holo/elf-dashboard.webp" alt=""></div></div>
+    <footer class="foot" id="foot">
       <span class="lbl">COMMS</span>
       <div class="ticker" id="ticker" aria-label="최근 호출"><div class="ticker-track" id="ticker-track"><span class="tk muted">통신 대기 중…</span></div></div>
       <span class="auto-state" id="auto-state"></span>
