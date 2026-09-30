@@ -1,6 +1,6 @@
 // 08 기록. 실시간 호출 · 작업 기록 · 시스템 상태 · 학생 접속 안내.
 import {
-  $, $$, esc, icon, money, num, fmtDateTime, fmtTime, relTime, copyText, snippetPython, snippetJs, snippetCurl, toCsv, downloadText, todayYmd,
+  $, $$, esc, icon, money, num, fmtDateTime, fmtTime, relTime, copyText, snippetPython, snippetJs, snippetCurl, toCsv, downloadText, todayYmd, isDockerGatewayIp,
 } from "../lib/util.js";
 import { state, loadActivity, loadStatus } from "../lib/store.js";
 import { toast, toastError, busy } from "../lib/ui.js";
@@ -159,7 +159,7 @@ export default {
       <td class="r num">${num(it.tokens)}</td>
       <td class="r num">${it.ok ? (it.unpriced ? '<span class="tag warn" title="LiteLLM 가격표에 없는 모델이라 비용이 0 으로 기록됩니다. 예산이 줄지 않습니다.">가격 없음</span>' : money(it.spend)) : "—"}</td>
       <td class="r num muted">${it.duration_ms != null ? `${(it.duration_ms / 1000).toFixed(1)}s` : "—"}</td>
-      <td class="num muted" style="font-size:11px">${esc(it.ip || "")}</td></tr>`).join("") || `<tr><td colspan="9" class="tbl-empty">${state.loaded.activity ? "조건에 맞는 호출이 없습니다." : "불러오는 중…"}</td></tr>`;
+      <td class="num muted" style="font-size:11px">${isDockerGatewayIp(it.ip) ? `<span class="tag mute" title="${esc(it.ip)} — 도커가 넘겨준 주소라 학생 PC 의 IP 가 아닙니다. README 의 '학생 PC 의 실제 IP 기록'을 보세요.">도커 내부</span>` : esc(it.ip || "")}</td></tr>`).join("") || `<tr><td colspan="9" class="tbl-empty">${state.loaded.activity ? "조건에 맞는 호출이 없습니다." : "불러오는 중…"}</td></tr>`;
   },
 
   async loadAudit() {

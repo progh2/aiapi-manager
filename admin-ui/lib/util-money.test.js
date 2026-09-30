@@ -5,8 +5,9 @@ const { pathToFileURL } = require("node:url");
 
 // 관리 화면 금액 표시(public/js/lib/util.js). 브라우저 모듈이지만 money 는 DOM 을 쓰지 않는다.
 let money;
+let isDockerGatewayIp;
 before(async () => {
-  ({ money } = await import(pathToFileURL(path.join(__dirname, "../public/js/lib/util.js")).href));
+  ({ money, isDockerGatewayIp } = await import(pathToFileURL(path.join(__dirname, "../public/js/lib/util.js")).href));
 });
 
 describe("관리 화면 금액", () => {
@@ -23,5 +24,19 @@ describe("관리 화면 금액", () => {
     assert.equal(money(150), "$150");
     assert.equal(money(-0.0005), "-$0.0005");
     assert.equal(money(null), "—");
+  });
+});
+
+describe("도커 게이트웨이 주소", () => {
+  it("172.16~31.x.0.1 은 학생 PC 가 아니라 도커 주소로 본다", () => {
+    assert.equal(isDockerGatewayIp("172.24.0.1"), true);
+    assert.equal(isDockerGatewayIp("172.17.0.1"), true);
+  });
+  it("학교 망 주소와 다른 172 주소는 그대로 둔다", () => {
+    assert.equal(isDockerGatewayIp("192.168.0.25"), false);
+    assert.equal(isDockerGatewayIp("172.16.5.23"), false);
+    assert.equal(isDockerGatewayIp("172.24.0.3"), false);
+    assert.equal(isDockerGatewayIp("172.32.0.1"), false);
+    assert.equal(isDockerGatewayIp(null), false);
   });
 });
