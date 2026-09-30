@@ -9,7 +9,11 @@
     "mock": "node dev-mock.js"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/orbitron": "^5.3.0",
+    "@fontsource/pretendard": "^5.3.0",
     "express": "^4.19.2",
-    "firebase-admin": "^12.3.0"
+    "firebase-admin": "^12.3.0",
+    "three": "^0.186.1"
   }
 }

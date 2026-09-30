@@ -1,8 +1,11 @@
-// 기간 만료 키 일괄 차단·회수.
+// 기간 만료 키 일괄 차단·회수·차단 해제.
 // 개별 POST /api/keys/block · /api/keys/delete 와 같은 LiteLLM 경로를 쓴다.
+// 해제(unblock)는 학급을 봉쇄했다가 다시 열 때 쓴다.
 // 서버(require)와 브라우저(<script src="/key-revoke.js">)에서 필터 규칙을 공유한다.
 
 const MAX_REVOKE = 500;
+const ACTIONS = new Set(["block", "unblock", "delete"]);
+const RETIRED_RE = /-폐기(-\d+)?$/;
 const DAY_MS = 86400000;
 const FILTERS = new Set([
   "expired", "expiring", "all", "blocked", "active",
@@ -171,6 +174,17 @@ async function revokeOne(litellm, action, key) {
     return resultRow(key, { error: "키를 찾을 수 없습니다" });
   }
   try {
+    if (action === "unblock") {
+      if (!key.blocked) {
+        return resultRow(key, { blocked: false, skipped: true });
+      }
+      // 비밀이 새서 바꾼 키는 다시 열지 않는다. 새 키가 이미 같은 별칭으로 있다.
+      if (RETIRED_RE.test(String(key.key_alias || ""))) {
+        return resultRow(key, { error: "폐기된 키는 다시 열 수 없습니다" });
+      }
+      await litellm("/key/unblock", "POST", { key: token });
+      return resultRow(key, { blocked: false, unblocked: true });
+    }
     if (action === "block") {
       if (key.blocked) {
         return resultRow(key, { blocked: true, skipped: true });
@@ -186,14 +200,14 @@ async function revokeOne(litellm, action, key) {
 }
 
 /**
- * LiteLLM 키를 순차 차단(/key/block) 또는 삭제(/key/delete)한다.
+ * LiteLLM 키를 순차 차단(/key/block), 차단 해제(/key/unblock), 삭제(/key/delete)한다.
  * tokens[] 가 있으면 그 키만, 없으면 team_id / filter 로 고른다.
  * 부분 실패는 나머지를 계속 진행하고 results[].error 로 남긴다.
  */
 async function revokeKeys(body, { litellm, now = new Date() } = {}) {
   const action = String(body?.action || "").trim();
-  if (action !== "block" && action !== "delete") {
-    throw httpError("action은 block 또는 delete 여야 합니다", 400);
+  if (!ACTIONS.has(action)) {
+    throw httpError("action은 block, unblock, delete 중 하나여야 합니다", 400);
   }
   if (!litellm) {
     throw httpError("litellm 클라이언트가 필요합니다", 500);
@@ -229,6 +243,7 @@ async function revokeKeys(body, { litellm, now = new Date() } = {}) {
 
 const KeyRevoke = {
   MAX_REVOKE,
+  ACTIONS,
   FILTERS,
   parseExpires,
   isExpired,

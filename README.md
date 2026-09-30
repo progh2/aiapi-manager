@@ -1,7 +1,8 @@
 # aiapi-manager
 
 학교 수업용 OpenAI API 사용량 관리 시스템. Synology DS918+ NAS(내부망)에서 LiteLLM Proxy를 돌려
-학생별 **가상 API 키**(예산·모델 제한 포함)를 발급하고, Firebase 구글 로그인 기반 관리자 웹 UI로 키를 관리한다.
+학생별 **가상 API 키**(예산·모델 제한 포함)를 발급하고, Firebase 구글 로그인 기반 관리 화면 **"AIAPI 관제 함교"** 로 관리한다.
+관리 화면은 3D 궤도 관제도 위에 8개 스테이션을 둔 우주선 제어판 형태이며, 교실 화면에 띄워 두는 **관제 모드**(자동 순환)를 지원한다.
 
 ```
 학생 코드 (OpenAI SDK, base_url만 변경)
@@ -21,8 +22,12 @@ LiteLLM Proxy (:4000) ──── Postgres (키·예산·사용량, 내부 전�
 |---|---|
 | `docker-compose.yml` | LiteLLM + Postgres + admin-ui 세 컨테이너. db·litellm·admin-ui 모두 healthcheck, `depends_on: service_healthy` |
 | `litellm/config.yaml` | 학생에게 노출할 모델 목록 |
-| `admin-ui/` | 관리자 웹 UI. Firebase 구글 로그인 → 학급/조·키 관리, 사용량 대시보드 |
-| `admin-ui/public/charts.js` | 대시보드 차트(인라인 SVG, 외부 라이브러리 없음) |
+| `admin-ui/` | 관리 화면 서버(Express)와 화면. Firebase 구글 로그인 → 관리자/등록 사용자 역할 |
+| `admin-ui/public/js/` | 관제 함교 화면. `main.js`(진입), `stations/*`(스테이션 8개), `scene/orbital.js`(3D), `pilot.js`(등록 사용자) |
+| `admin-ui/public/css/bridge.css` | 테마. 데이터 색은 색각 이상 검증을 통과한 팔레트만 쓴다 |
+| `admin-ui/public/charts.js` | 사용량 차트(인라인 SVG, 외부 라이브러리 없음) |
+| `admin-ui/lib/` | 서버 로직과 단위 테스트(`npm test`) — 작업 기록, 호출 로그, 학급 봉쇄, 일괄 충전 등 |
+| `admin-ui/dev-mock.js` | 개발용. 흉내 LiteLLM + 실제 `server.js` 로 Firebase 없이 화면 전체를 띄운다 (`npm run mock`) |
 | `scripts/issue_keys.py` | 학생 명단 CSV로 키 일괄 발급 (표준 라이브러리만 사용) |
 | `scripts/revoke_camp_keys.py` | 캠프 키 당일 종료 후 차단·회수 (cron 훅) |
 
@@ -58,6 +63,8 @@ cp .env.example .env
 | `POSTGRES_PASSWORD` | 임의의 강한 비밀번호 |
 | `FIREBASE_PROJECT_ID` | Firebase 콘솔의 프로젝트 ID |
 | `ADMIN_EMAILS` | 관리자로 허용할 구글 계정 (쉼표 구분) |
+| `PUBLIC_PROXY_URL` | (선택) 학생 코드의 `base_url`. 비우면 관리 화면에 접속한 주소 + `LITELLM_PORT` |
+| `LITELLM_DISABLE_ADMIN_UI` | (선택) 기본 `True`. LiteLLM 자체 관리 화면(`:4000/ui`)을 끈다. 켜려면 `False` |
 
 > `.env`와 `firebase-config.js` 수정본은 절대 공개 저장소에 올리지 말 것 (`.env`는 `.gitignore` 처리됨).
 
@@ -113,6 +120,106 @@ docker compose up -d --build
 - 학생들이 접속해야 한다면 PC의 내부 IP(예: `http://192.168.0.20:4000`)를 안내하고,
   그 주소를 Firebase 승인된 도메인에도 추가한다. PC가 꺼지면 서비스도 꺼지므로 상시 운영은 NAS 쪽을 권장.
 - 중지: `docker compose down` / 로그 확인: `docker compose logs -f litellm`
+
+## 관리 화면 둘러보기 (관제 함교)
+
+![개요 — 3D 궤도 관제도와 함선 상태·경보·예측](docs/screenshots/01-bridge.webp)
+
+<details><summary>다른 스테이션 화면 보기</summary>
+
+| | |
+|---|---|
+| ![사용량](docs/screenshots/02-telemetry.webp) | ![키 관리와 상세 서랍](docs/screenshots/03-keys-drawer.webp) |
+| ![학급/조와 봉쇄](docs/screenshots/04-classes.webp) | ![키 발급](docs/screenshots/05-launch.webp) |
+| ![공급자 키·묶음](docs/screenshots/06-engines.webp) | ![기록 — 실시간 호출과 실패 이유](docs/screenshots/07-log.webp) |
+| ![등록 사용자 조종석](docs/screenshots/08-student.webp) | |
+
+화면은 `npm run mock` 의 시연 데이터다.
+</details>
+
+로그인하면 부팅 화면 뒤에 3D 궤도 관제도와 스테이션 레일이 뜬다. 레일 버튼이나 숫자 키 `1`~`8` 로 옮겨 다닌다.
+주소 끝의 `#keys` 같은 해시로 새로고침해도 그 자리를 지킨다.
+
+| 번호 | 스테이션 | 하는 일 |
+|---|---|---|
+| 01 | **개요** | 3D 관제도, 함선 상태(지출·활성 키·차단·만료 임박·수업 중 학급·공급자 잔액), 경보, 예측, 최근 호출, AI 엘피 브리핑 |
+| 02 | **사용량** | 누적+예측, 일별 지출, 일별 호출 수, 학생별·학급별·**모델별** 지출. 차트마다 "표로 보기" |
+| 03 | **키 관리** | 검색·필터, 여러 키 **일괄 차단·해제·충전·회수**, CSV 내보내기, 별칭을 누르면 **상세 서랍**(충전·연장·이력·그 키의 최근 호출) |
+| 04 | **학급/조** | 학급 카드(예산 게이지, 수업 중 여부, 주간 시간표 격자), 수정, **학급 전체 충전**, **봉쇄/해제** |
+| 05 | **키 발급** | 학급 일괄(명단 미리보기 표), 캠프 짧은 키, 한 명. 결과에서 CSV·**학생 안내문 인쇄** |
+| 06 | **공급자** | 공급자 키·묶음 카드, **상태 점검**(저장된 키로 모델 조회·지연 시간), 등록·수정, 묶음 최근 호출 |
+| 07 | **사용자** | 등록 사용자 추가·**수정**·삭제, 연결 키 검색 선택기 |
+| 08 | **기록** | **실시간 호출**(실패 이유 한국어), **작업 기록**(누가·언제·무엇을), **시스템 상태**, **학생 접속 안내**(예제 코드·인쇄) |
+
+### 3D 관제도 읽는 법
+
+- 가운데 **코어** = 프록시(LiteLLM). 아래쪽 팔면체 = 공급자 키, 매듭 모양 = 묶음
+- **행성** = 학급. 크기는 키 수, 색은 예산 사용률(청록 → 80% 주황 → 소진 빨강)
+- 행성 **고리**: 수업 중(녹색, 깜빡임) · 항상 열림(청록) · 수업 외(회색) · **봉쇄**(빨간 육각)
+- **위성** = 학생 키. 상태색(사용 중 청록·임박 주황·소진 빨강·차단 어두운 빨강·만료 회색·캠프 보라)
+- 실제 호출이 들어오면 위성 → 코어 → 엔진으로 빛이 흐르고, **막힌 호출은 코어에서 붉게 튕긴다**
+- 빈 곳을 끌면 회전, 행성·위성·엔진을 누르면 해당 상세로 간다. 모든 정보는 패널에도 있어 3D 는 보조 표시다
+- WebGL 이 없거나 느린 PC 는 자동으로 저사양 모드가 되고, 상단 큐브 버튼(`T`)이나 설정에서 끌 수 있다
+
+### 관제 모드 (교실 화면용)
+
+상단의 순환 버튼이나 `A` 로 켠다. 읽기 전용 스테이션(개요·사용량·학급·공급자·기록)을 정한 간격(기본 20초)으로 돌며 보여 준다.
+마우스를 누르거나 키를 치면 30초 멈춘다. 간격과 돌 스테이션은 **설정**에서 고른다. 전체 화면은 `F`.
+
+### 단축키
+
+| 키 | 동작 |
+|---|---|
+| `1`~`8` | 스테이션 이동 |
+| `Ctrl`+`K` | 명령 팔레트 — 키 별칭·학급·작업 검색 |
+| `/` | 키 검색 |
+| `A` / `T` / `F` / `R` | 관제 모드 / 3D 켜고 끄기 / 전체 화면 / 새로고침 |
+| `Esc` | 창 닫기, 입력칸에서 빠져나오기 |
+
+한글 자판 상태에서도 된다(글자가 아니라 키 위치로 판단).
+
+### 설정
+
+움직임 줄이기(회전 전환·깜빡임·타자 효과 끔, 운영체제 설정도 따름), 대비 강화(밝은 교실·프로젝터), 3D 품질·이름표,
+관제 모드 간격·순환 스테이션, 학생 안내 주소(주소가 자동으로 맞지 않을 때)를 바꿀 수 있다. 설정은 브라우저마다 저장된다.
+
+### 등록 사용자(학생·교사) 화면
+
+`ADMIN_EMAILS` 가 아닌 등록 사용자는 **조종석** 화면을 본다. 연결된 키의 남은 예산, 지금 쓸 수 있는 시간인지,
+사용량 차트, **최근 호출과 막힌 이유**(예: 수업 시간대 밖, 예산 초과, 허용 안 된 모델), 접속 주소와 예제 코드가 나온다.
+키 문자열·해시·IP 는 보이지 않는다.
+
+## 새로 들어간 운영 기능
+
+- **학급 봉쇄/해제** — 시험·사고 때 학급의 열린 키를 한 번에 막는다. 해제는 **봉쇄로 막은 키만** 다시 열고,
+  봉쇄 전부터 막혀 있던 키와 폐기된 키(`-폐기`)는 그대로 둔다. 표시는 키·학급 `metadata.aiapi_lockdown`. API `POST /api/teams/lockdown {team_id, action: "lock"|"unlock", reason?}`
+- **일괄 해제·충전** — `POST /api/keys/revoke` 에 `action=unblock` (폐기된 키는 거절). `POST /api/keys/adjust/bulk {tokens | team_id, add_budget?, add_days?, expires?}` — 이력은 키마다 남는다
+- **작업 기록** — 관리 작업을 `admin-ui/data/audit.jsonl` 에 최근 5000건 남긴다(비밀 키 값은 남기지 않음). `GET /api/audit`
+- **실시간 호출** — `GET /api/activity` 가 LiteLLM `/spend/logs/v2` 에서 시각·별칭·학급·모델·토큰·금액·성공 여부와 **실패 이유(한국어)** 만 준다.
+  프롬프트와 응답은 옮기지 않는다. 등록 사용자는 `GET /api/my/activity` 로 자기 키 것만 본다
+- **시스템 상태** — `GET /api/status` (LiteLLM 생존·DB 연결·저장소·버전)
+- **학생 안내문** — 일괄·캠프 발급 결과에서 키·접속 주소·예제 코드가 담긴 절취용 카드를 인쇄한다
+- 묶음의 **최근 호출**이 실제 호출을 보여 준다(이전에는 일별 요약 응답을 읽어 늘 비어 있었다)
+
+## 4000번 포트(LiteLLM) 페이지는 무엇인가
+
+- `http://NAS:4000/` 을 브라우저로 열면 LiteLLM 이 자동으로 만든 **API 문서(Swagger)** 가 나온다.
+  학생 코드가 접속하는 **엔진이라 절대 끄면 안 되지만, 화면에서 할 일은 없다.**
+- `http://NAS:4000/ui` 는 LiteLLM 자체 관리 화면이다. 이 관리 화면(3000번)이 대신하므로 **기본으로 끈다**
+  (`LITELLM_DISABLE_ADMIN_UI=True` → "Admin UI Disabled" 안내가 뜬다). 꼭 필요하면 `.env` 에 `False` 로 두고 `docker compose up -d litellm`.
+- Swagger 문서까지 숨기려면 `docker-compose.yml` 의 litellm `environment` 에 `NO_DOCS: "True"` 를 더한다(그러면 루트 주소는 404).
+
+## 개발: Firebase 없이 화면 띄우기
+
+```sh
+cd admin-ui
+npm install
+npm run mock      # http://127.0.0.1:3456  (관리자) · /?as=student@school.kr (등록 사용자)
+```
+
+`dev-mock.js` 는 흉내 LiteLLM(학급 5개·키 40여 개·공급자 2개·묶음 1개와 30일 사용 기록)을 띄우고,
+가짜 학생 호출을 계속 만들면서 **실제 `server.js`** 를 그대로 올린다. 인증만 스텁이다. `MOCK_SIMULATE=0` 이면 가짜 호출을 멈춘다.
+배포에는 쓰지 않는다.
 
 ## NAS/PC 재확인 (이슈 #9)
 
@@ -269,8 +376,8 @@ client = OpenAI(api_key="발급받은 키", base_url="http://NAS주소:4000")
 resp = client.chat.completions.create(model="gpt-4o-mini", messages=[...])
 ```
 
-예산이 소진되면 요청이 자동 차단된다. 사용량은 관리자 UI 또는
-LiteLLM 자체 대시보드(`http://NAS주소:4000/ui`, 마스터 키로 로그인)에서 확인.
+예산이 소진되면 요청이 자동 차단된다. 사용량과 막힌 이유는 관리 화면(학생은 등록 사용자 조종석)에서 본다.
+접속 주소와 예제 코드는 관리 화면 **기록 → 학생 접속 안내**에서 복사하거나 인쇄한다.
 
 
 ## Postgres 백업·복구
@@ -285,4 +392,7 @@ NAS/PC에서 키·조 UI까지 재확인하는 순서는 [docs/nas-pc-recheck.md
 - admin-ui는 Firebase ID 토큰을 서버에서 검증한다. `ADMIN_EMAILS`는 관리자이고, 그 외는 `admin-ui/data/users.json`에 등록된 구글 계정만 로그인할 수 있다. 등록 사용자는 연결된 키의 사용량만 본다.
 - 키 발급에는 예산이 필요하다. 모델을 비우면 `gpt-4o-mini`만 연다. 이미 있는 별칭은 다시 만들지 않는다.
 - 사용량 날짜는 한국 시간이다. 학급 예산 소진 예상은 학급을 합치지 않고 가장 빨리 끝나는 학급을 보여 준다.
+- 관리 작업은 `admin-ui/data/audit.jsonl` 에 남는다. 키 비밀값·공급자 비밀 키는 기록하지 않는다.
+- 호출 기록 화면은 프롬프트·응답 본문을 받지도 보여 주지도 않는다. 오류 문구 속 키 조각과 해시는 가린다.
+- 3D 라이브러리(three)와 글꼴은 npm 의존성으로 이미지에 들어가 `/vendor` 로 제공된다. 로그인(Firebase)만 인터넷이 필요하다.
 - 전체 시스템은 학교 내부망 전용을 전제로 한다. 외부 노출이 필요해지면 Cloudflare Tunnel 등을 앞단에 둘 것.

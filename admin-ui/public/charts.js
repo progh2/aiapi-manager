@@ -1,5 +1,6 @@
 // 사용량 대시보드 차트. 외부 차트 라이브러리 없이 인라인 SVG로 그린다.
-// 색은 역할별 CSS 변수(--series-1 등)를 쓰고, 라이트/다크 값은 style에서 전환된다.
+// 색은 역할별 CSS 변수(--series-1 등)를 쓰고, 값은 bridge.css 에서 정한다.
+// 막대·행은 키보드 초점으로도 툴팁을 연다(마우스 호버와 같은 내용).
 
 import { money, hasRemaining, remainingTipLine, rankValueText } from "./remaining-label.mjs";
 
@@ -30,6 +31,20 @@ function showTip(html, x, y) {
 }
 const hideTip = () => { if (tip) tip.style.display = "none"; };
 
+// 마우스와 키보드 초점에 같은 툴팁을 단다.
+function hover(target, html) {
+  target.setAttribute("tabindex", "0");
+  target.addEventListener("mousemove", (ev) => showTip(html(), ev.clientX, ev.clientY));
+  target.addEventListener("mouseleave", hideTip);
+  target.addEventListener("focus", () => {
+    const r = target.getBoundingClientRect();
+    showTip(html(), r.left + r.width / 2, r.top + 4);
+  });
+  target.addEventListener("blur", hideTip);
+}
+
+const countFmt = (v) => (v >= 10000 ? `${(v / 1000).toFixed(0)}K` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(Math.round(v)));
+
 function niceTicks(max, count = 4) {
   if (max <= 0) return [0];
   const raw = max / count;
@@ -43,7 +58,7 @@ function niceTicks(max, count = 4) {
 }
 
 // 축·격자를 그리고 좌표 변환 함수를 돌려준다
-function frame(svg, w, h, pad, maxY) {
+function frame(svg, w, h, pad, maxY, fmt = money) {
   const ticks = niceTicks(maxY);
   const top = ticks[ticks.length - 1] || 1;
   const y = (v) => pad.t + (h - pad.t - pad.b) * (1 - v / top);
@@ -53,7 +68,7 @@ function frame(svg, w, h, pad, maxY) {
       stroke: "var(--grid)", "stroke-width": 1,
     }));
     const lb = el("text", { x: pad.l - 8, y: y(t) + 4, "text-anchor": "end", class: "ax" });
-    lb.textContent = money(t);
+    lb.textContent = fmt(t);
     svg.appendChild(lb);
   }
   return { y, top };
@@ -61,11 +76,16 @@ function frame(svg, w, h, pad, maxY) {
 
 // ---- 일별 지출 (막대) ----
 export function dailyBarChart(node, dates, values) {
+  return seriesBarChart(node, dates, values, { format: money, label: "지출" });
+}
+
+// ---- 날짜별 막대. format 으로 금액·횟수를 바꾼다 ----
+export function seriesBarChart(node, dates, values, { format = money, label = "값", height = 220 } = {}) {
   node.innerHTML = "";
-  const w = node.clientWidth || 720, h = 220, pad = { l: 52, r: 12, t: 12, b: 26 };
-  const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, width: "100%", height: h, role: "img" });
-  const max = Math.max(...values, 0.0001);
-  const { y } = frame(svg, w, h, pad, max);
+  const w = node.clientWidth || 720, h = height, pad = { l: 52, r: 12, t: 12, b: 26 };
+  const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, width: "100%", height: h, role: "img", "aria-label": `${label} 막대 그래프` });
+  const max = Math.max(...values, format === money ? 0.0001 : 1);
+  const { y } = frame(svg, w, h, pad, max, format === money ? money : countFmt);
   const plotW = w - pad.l - pad.r;
   const bw = Math.max(2, plotW / values.length - 2); // 막대 사이 2px 간격
   const base = h - pad.b;
@@ -85,9 +105,7 @@ export function dailyBarChart(node, dates, values) {
     }
     // 히트 영역은 막대보다 넓게
     const hit = el("rect", { x: pad.l + (plotW / values.length) * i, y: pad.t, width: plotW / values.length, height: base - pad.t, fill: "transparent" });
-    hit.addEventListener("mousemove", (ev) => showTip(
-      `<b>${esc(dates[i])}</b><br>지출 ${money(v)}`, ev.clientX, ev.clientY));
-    hit.addEventListener("mouseleave", hideTip);
+    hover(hit, () => `<b>${esc(dates[i])}</b><br>${esc(label)} ${format === money ? money(v) : Math.round(v).toLocaleString("ko-KR") + "회"}`);
     svg.appendChild(hit);
   });
 
@@ -199,7 +217,8 @@ export function rankBarChart(node, items, { valueKey = "spend", labelKey = "alia
   data.forEach((d, i) => {
     const yTop = i * rowH + 6, bh = 14;
     const lb = el("text", { x: 0, y: yTop + 11, class: "lbl" });
-    lb.textContent = d[labelKey];
+    const name = String(d[labelKey] ?? "");
+    lb.textContent = name.length > 16 ? name.slice(0, 15) + "…" : name;
     svg.appendChild(lb);
     if (subKey && d[subKey]) {
       const sub = el("text", { x: labelW - 10, y: yTop + 11, "text-anchor": "end", class: "ax" });
@@ -222,13 +241,32 @@ export function rankBarChart(node, items, { valueKey = "spend", labelKey = "alia
     svg.appendChild(val);
 
     const hit = el("rect", { x: 0, y: i * rowH, width: w, height: rowH, fill: "transparent" });
-    hit.addEventListener("mousemove", (ev) => showTip(
+    hover(hit, () =>
       `<b>${esc(d[labelKey])}</b>${d.team ? ` · ${esc(d.team)}` : ""}<br>지출 ${spendTxt}` +
       (d.budget ? `<br>예산 ${money(d.budget)} (${((d[valueKey] / d.budget) * 100).toFixed(0)}%)` : "") +
       (hasRemaining(d) ? `<br>${remainingTipLine(d.remaining)}` : "") +
-      (d.requests != null ? `<br>요청 ${d.requests.toLocaleString()}회` : ""), ev.clientX, ev.clientY));
-    hit.addEventListener("mouseleave", hideTip);
+      (d.requests != null ? `<br>요청 ${d.requests.toLocaleString()}회` : ""));
     svg.appendChild(hit);
   });
+  node.appendChild(svg);
+}
+
+// ---- 수치 타일용 스파크라인. 마지막 값만 강조한다 ----
+export function sparkline(node, values, { height = 26 } = {}) {
+  node.innerHTML = "";
+  const list = (values || []).slice(-14);
+  if (list.length < 2) return;
+  const w = node.clientWidth || 160;
+  const h = height;
+  const max = Math.max(...list, 0.0001);
+  const x = (i) => 2 + ((w - 4) * i) / (list.length - 1);
+  const y = (v) => h - 3 - (h - 6) * (v / max);
+  const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, width: "100%", height: h, "aria-hidden": "true" });
+  svg.appendChild(el("path", {
+    d: list.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "),
+    fill: "none", stroke: "var(--axis)", "stroke-width": 1.5, "stroke-linejoin": "round",
+  }));
+  const last = list.length - 1;
+  svg.appendChild(el("circle", { cx: x(last), cy: y(list[last]), r: 3, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 1.5 }));
   node.appendChild(svg);
 }

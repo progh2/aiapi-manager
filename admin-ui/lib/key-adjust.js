@@ -174,12 +174,13 @@ function mergeHistoryMetadata(metadata, entry) {
  * 한 키의 예산을 가산하고/또는 만료를 늘린 뒤 이력을 metadata 에 붙인다.
  * LiteLLM POST /key/update { key, max_budget?, duration?, metadata }
  */
-async function adjustKey(body, { litellm, now = new Date(), actor } = {}) {
+async function adjustKey(body, { litellm, now = new Date(), actor, key: preloaded = null } = {}) {
   const token = String(body?.token || body?.key || "").trim();
   if (!token) throw httpError("token이 필요합니다", 400);
   if (!litellm) throw httpError("litellm 클라이언트가 필요합니다", 500);
 
-  const key = await findKey(litellm, token);
+  // 일괄 충전은 목록을 한 번 읽어 넘긴다. 키마다 /key/info 를 다시 부르지 않는다.
+  const key = preloaded ? { ...preloaded } : await findKey(litellm, token);
   if (!key) throw httpError("키를 찾을 수 없습니다", 404);
   if (!keyToken(key)) key.token = token;
 
@@ -205,6 +206,79 @@ async function adjustKey(body, { litellm, now = new Date(), actor } = {}) {
     expires_before: entry.expires_before ?? null,
     history,
     entry,
+  };
+}
+
+const MAX_BULK_ADJUST = 500;
+const RETIRED_RE = /-폐기(-\d+)?$/;
+
+/**
+ * 여러 키를 한 번에 충전·연장한다. tokens 가 있으면 그 키만, 없으면 team_id 학급 전체.
+ * 폐기된 키(별칭 끝이 -폐기)는 학급 전체에서 뺀다. 부분 실패는 행마다 남긴다.
+ */
+async function adjustKeys(body, { litellm, now = new Date(), actor } = {}) {
+  if (!litellm) throw httpError("litellm 클라이언트가 필요합니다", 500);
+  const addBudget = parseAddBudget(body?.add_budget);
+  const addDays = parseAddDays(body?.add_days);
+  const expires = body?.expires != null ? String(body.expires).trim() : "";
+  if (addBudget == null && addDays == null && !expires) {
+    throw httpError("충전 금액 또는 연장(만료일·일수)이 필요합니다", 400);
+  }
+  if (addDays != null && expires) {
+    throw httpError("만료일과 연장 일수를 함께 지정할 수 없습니다", 400);
+  }
+  const tokens = Array.isArray(body?.tokens)
+    ? [...new Set(body.tokens.map((t) => String(t || "").trim()).filter(Boolean))]
+    : [];
+  const teamId = String(body?.team_id || "").trim();
+  if (!tokens.length && !teamId) throw httpError("키를 고르거나 학급을 정하세요", 400);
+
+  const all = await listAllKeys(litellm);
+  let targets;
+  if (tokens.length) {
+    const byToken = new Map(all.map((k) => [keyToken(k), k]));
+    targets = tokens.map((t) => byToken.get(t) || { token: t, missing: true });
+  } else {
+    targets = all.filter((k) => k.team_id === teamId && !RETIRED_RE.test(String(k.key_alias || "")));
+  }
+  if (!targets.length) throw httpError("조건에 맞는 키가 없습니다", 400);
+  if (targets.length > MAX_BULK_ADJUST) {
+    throw httpError(`한 번에 ${MAX_BULK_ADJUST}개까지 충전할 수 있습니다`, 400);
+  }
+
+  const payload = {};
+  if (addBudget != null) payload.add_budget = addBudget;
+  if (addDays != null) payload.add_days = addDays;
+  if (expires) payload.expires = expires;
+
+  const results = [];
+  for (const k of targets) {
+    const token = keyToken(k);
+    if (k.missing || !token) {
+      results.push({ alias: null, token: token || null, error: "키를 찾을 수 없습니다" });
+      continue;
+    }
+    try {
+      const out = await adjustKey({ token, ...payload }, { litellm, now, actor, key: k });
+      results.push({
+        alias: out.alias,
+        token,
+        team_id: out.team_id,
+        max_budget_before: out.max_budget_before,
+        max_budget: out.max_budget,
+        remaining: out.remaining,
+        expires: out.expires,
+      });
+    } catch (e) {
+      results.push({ alias: k.key_alias || null, token, team_id: k.team_id || null, error: e.message });
+    }
+  }
+  return {
+    results,
+    team_id: teamId || null,
+    add_budget: addBudget,
+    add_days: addDays,
+    expires: expires || null,
   };
 }
 
@@ -238,5 +312,7 @@ module.exports = {
   buildUpdateAndEntry,
   mergeHistoryMetadata,
   adjustKey,
+  adjustKeys,
+  MAX_BULK_ADJUST,
   keyDetail,
 };

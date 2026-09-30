@@ -74,6 +74,12 @@ function mockLiteLLM({ keys = SAMPLE, failAlias } = {}) {
       k.blocked = true;
       return { blocked: true };
     }
+    if (path === "/key/unblock") {
+      const k = keys.find((x) => x.token === body.key);
+      if (!k) throw new Error("키 없음");
+      k.blocked = false;
+      return { blocked: false };
+    }
     if (path === "/key/delete") {
       const tok = (body.keys || [])[0];
       const i = keys.findIndex((x) => x.token === tok);
@@ -249,6 +255,45 @@ describe("revokeKeys", () => {
     assert.equal(out.results[0].blocked, true);
     assert.equal(out.results[1].error, "키를 찾을 수 없습니다");
     assert.equal(calls.filter((c) => c.path === "/key/block").length, 1);
+  });
+
+  it("학급의 차단된 키만 /key/unblock 으로 다시 연다", async () => {
+    const keys = SAMPLE.map((k) => ({ ...k }));
+    const { litellm, calls } = mockLiteLLM({ keys });
+    const out = await revokeKeys({ action: "unblock", team_id: "team-1", filter: "blocked" }, { litellm, now: NOW });
+    assert.equal(out.action, "unblock");
+    assert.equal(out.results.length, 1);
+    assert.equal(out.results[0].alias, "expired-blocked");
+    assert.equal(out.results[0].unblocked, true);
+    assert.equal(keys.find((k) => k.key_alias === "expired-blocked").blocked, false);
+    assert.equal(calls.filter((c) => c.path === "/key/unblock").length, 1);
+    assert.ok(!calls.some((c) => c.path === "/key/block" || c.path === "/key/delete"));
+  });
+
+  it("차단되지 않은 키의 해제는 건너뛴 성공으로 남긴다", async () => {
+    const keys = SAMPLE.map((k) => ({ ...k }));
+    const { litellm, calls } = mockLiteLLM({ keys });
+    const out = await revokeKeys({ action: "unblock", tokens: ["sk-active-c"] }, { litellm, now: NOW });
+    assert.equal(out.results[0].skipped, true);
+    assert.equal(out.results[0].error, undefined);
+    assert.equal(calls.filter((c) => c.path === "/key/unblock").length, 0);
+  });
+
+  it("폐기된 키는 골라도 다시 열지 않는다", async () => {
+    const keys = [key({ key_alias: "20261001-홍길동-폐기", blocked: true, token: "sk-old" })];
+    const { litellm, calls } = mockLiteLLM({ keys });
+    const out = await revokeKeys({ action: "unblock", tokens: ["sk-old"] }, { litellm, now: NOW });
+    assert.match(out.results[0].error, /폐기/);
+    assert.equal(keys[0].blocked, true);
+    assert.equal(calls.filter((c) => c.path === "/key/unblock").length, 0);
+  });
+
+  it("모르는 action 은 400", async () => {
+    const { litellm } = mockLiteLLM();
+    await assert.rejects(
+      () => revokeKeys({ action: "explode", tokens: ["sk-active-c"] }, { litellm, now: NOW }),
+      (e) => e.status === 400 && /unblock/.test(e.message)
+    );
   });
 
   it("action 없으면 400", async () => {

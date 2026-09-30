@@ -16,6 +16,11 @@ const { PROVIDERS, listProviderModels } = require("./lib/provider-catalog");
 const { resolveIssueModels, teamModelsFor } = require("./lib/model-allowlist");
 const { issueCampKeys, campIssuePolicy, revokeCampKeys, todayYmd } = require("./lib/camp-keys");
 const { DAY_MS, ymd, buildAnalytics } = require("./lib/analytics");
+const { AuditLog } = require("./lib/audit-log");
+const { toActivity, summarizeActivity, activityQuery, rowsOf } = require("./lib/activity");
+const { adjustKeys } = require("./lib/key-adjust");
+const { lockdownTeam, liftLockdown } = require("./lib/lockdown");
+const { version: APP_VERSION } = require("./package.json");
 
 const {
   FIREBASE_PROJECT_ID,
@@ -26,6 +31,10 @@ const {
   LITELLM_MASTER_KEY,
   USERS_DATA_PATH = path.join(__dirname, "data", "users.json"),
   PROVIDER_KEYS_PATH = path.join(__dirname, "data", "provider-keys.json"),
+  AUDIT_LOG_PATH = path.join(__dirname, "data", "audit.jsonl"),
+  // 학생에게 안내할 프록시 주소. 비우면 화면이 접속 주소와 LITELLM_PORT 로 만든다.
+  PUBLIC_PROXY_URL = "",
+  LITELLM_PORT = "4000",
   PORT = 3000,
 } = process.env;
 
@@ -42,6 +51,8 @@ const adminEmails = new Set(
 );
 const usersStore = new UsersStore(USERS_DATA_PATH);
 const providerStore = new ProviderKeyStore(PROVIDER_KEYS_PATH);
+const auditLog = new AuditLog(AUDIT_LOG_PATH);
+const STARTED_AT = Date.now();
 const firebaseClientConfig = {
   apiKey: FIREBASE_API_KEY || "REPLACE_ME",
   authDomain: FIREBASE_AUTH_DOMAIN || `${FIREBASE_PROJECT_ID}.firebaseapp.com`,
@@ -55,6 +66,12 @@ app.get("/firebase-config.js", (_req, res) => {
     `window.FIREBASE_CONFIG = ${JSON.stringify(firebaseClientConfig)};\n`
   );
 });
+// 3D·글꼴은 npm 으로 받은 파일을 그대로 준다. 교실 망에서 CDN 에 기대지 않는다.
+const vendorDir = (rel) => path.join(__dirname, "node_modules", rel);
+app.use("/vendor/three", express.static(vendorDir("three/build"), { maxAge: "7d" }));
+app.use("/vendor/fonts/pretendard", express.static(vendorDir("@fontsource/pretendard/files"), { maxAge: "30d" }));
+app.use("/vendor/fonts/orbitron", express.static(vendorDir("@fontsource-variable/orbitron/files"), { maxAge: "30d" }));
+app.use("/vendor/fonts/jetbrains-mono", express.static(vendorDir("@fontsource-variable/jetbrains-mono/files"), { maxAge: "30d" }));
 app.use(express.static(__dirname + "/public"));
 // 브라우저 명단 파서가 서버와 같은 규칙을 쓰도록 lib 파일을 그대로 제공한다.
 app.get("/roster.js", (_req, res) => {
@@ -71,6 +88,13 @@ app.get("/health", (_req, res) => {
 
 function isAdminEmail(email) {
   return adminEmails.has((email || "").toLowerCase());
+}
+
+// 관리 작업을 컨테이너 로그와 audit.jsonl 에 함께 남긴다.
+function record(req, action, target, detail, message) {
+  const actor = req.adminEmail || (req.user && req.user.email) || null;
+  if (message) console.log(`${actor} 이(가) ${message}`);
+  return auditLog.append({ actor, action, target, detail });
 }
 
 async function verifyToken(req) {
@@ -178,6 +202,8 @@ function toPublicKey(k, teamNames) {
     blocked: Boolean(k.blocked),
     team_id: k.team_id || null,
     team_alias: k.team_id ? (teamNames.get(k.team_id) || null) : null,
+    // 학생이 "지금 쓸 수 있는 시간인지" 알 수 있게 자기 키의 시간표만 준다.
+    schedule: Array.isArray(k.metadata && k.metadata.aiapi_schedule) ? k.metadata.aiapi_schedule : [],
   };
 }
 
@@ -204,6 +230,17 @@ async function loadTeam(teamId) {
   return teams.find((team) => team.team_id === teamId) || null;
 }
 
+// 작업 기록에는 학급 id 대신 이름을 남긴다. 조회가 실패해도 기록은 남긴다.
+async function teamLabel(teamId) {
+  if (!teamId) return null;
+  try {
+    const team = await loadTeam(teamId);
+    return (team && team.team_alias) || teamId;
+  } catch {
+    return teamId;
+  }
+}
+
 async function syncTeamSchedule(teamId, schedule) {
   const keys = keysFollowingTeam(await fetchAllKeys(), teamId);
   let updated = 0;
@@ -226,7 +263,9 @@ app.post("/api/teams", requireAdmin, async (req, res) => {
       ...keyParams(prepared),
       metadata: { aiapi_schedule: schedule },
     });
-    console.log(`${req.adminEmail} 이(가) 그룹 생성: ${req.body.alias}`);
+    record(req, "team.create", req.body.alias, {
+      team_id: data.team_id, budget: req.body.budget, models: prepared.models,
+    }, `그룹 생성: ${req.body.alias}`);
     res.json(data);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -245,7 +284,9 @@ app.post("/api/teams/update", requireAdmin, async (req, res) => {
       metadata: teamScheduleMetadata(existing && existing.metadata, schedule),
     });
     const updated = await syncTeamSchedule(req.body.team_id, schedule);
-    console.log(`${req.adminEmail} 이(가) 그룹 수정: ${req.body.team_id} (시간표 키 ${updated})`);
+    record(req, "team.update", req.body.alias || existing?.team_alias || req.body.team_id, {
+      team_id: req.body.team_id, budget: req.body.budget, schedule_keys: updated,
+    }, `그룹 수정: ${req.body.team_id} (시간표 키 ${updated})`);
     res.json({ ...data, schedule_keys: updated });
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -255,8 +296,10 @@ app.post("/api/teams/update", requireAdmin, async (req, res) => {
 app.post("/api/teams/delete", requireAdmin, async (req, res) => {
   if (!req.body.team_id) return res.status(400).json({ error: "team_id가 필요합니다" });
   try {
+    const doomed = await loadTeam(req.body.team_id);
     res.json(await litellm("/team/delete", "POST", { team_ids: [req.body.team_id] }));
-    console.log(`${req.adminEmail} 이(가) 그룹 삭제: ${req.body.team_id}`);
+    record(req, "team.delete", doomed?.team_alias || req.body.team_id, { team_id: req.body.team_id },
+      `그룹 삭제: ${req.body.team_id}`);
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
@@ -270,7 +313,9 @@ app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
     const out = await assignClassBudgets(prepared, { litellm });
     const n = out.results.length;
     const fail = out.results.filter((r) => r.error).length;
-    console.log(`${req.adminEmail} 이(가) 일괄 발급: ${n}명 (실패 ${fail})`);
+    record(req, "keys.bulk", out.team_alias || await teamLabel(out.team_id), {
+      count: n, failed: fail, budget: out.max_budget, expires: out.expires, models: out.models,
+    }, `일괄 발급: ${n}명 (실패 ${fail})`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -283,7 +328,9 @@ app.post("/api/keys/camp", requireAdmin, async (req, res) => {
     const prepared = attachProvider(req.body, providerStore);
     const out = await issueCampKeys(prepared, { litellm });
     const fail = out.results.filter((r) => r.error).length;
-    console.log(`${req.adminEmail} 이(가) 캠프 키 발급: ${out.count}개 (실패 ${fail}) 만료 ${out.expires} 모델 ${(out.models || []).join(",")}`);
+    record(req, "keys.camp", out.prefix, {
+      count: out.count, failed: fail, expires: out.expires, models: out.models, team: out.team_alias || out.team_id,
+    }, `캠프 키 발급: ${out.count}개 (실패 ${fail}) 만료 ${out.expires} 모델 ${(out.models || []).join(",")}`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -306,7 +353,8 @@ app.post("/api/keys/camp/revoke", requireAdmin, async (req, res) => {
     const n = out.results.length;
     const fail = out.results.filter((r) => r.error).length;
     const verb = out.action === "delete" ? "회수" : "차단";
-    console.log(`${req.adminEmail} 이(가) 캠프 키 ${verb}: ${n}개 (실패 ${fail}) filter ${out.filter}`);
+    record(req, "keys.camp.revoke", out.filter, { action: out.action, count: n, failed: fail },
+      `캠프 키 ${verb}: ${n}개 (실패 ${fail}) filter ${out.filter}`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -336,13 +384,7 @@ app.get("/api/analytics", requireAdmin, async (req, res) => {
     }
 
     // 키 해시 → 별칭/그룹 이름으로 치환
-    const keyList = [];
-    for (let page = 1; ; page++) {
-      const d = await litellm(`/key/list?return_full_object=true&size=100&page=${page}`);
-      keyList.push(...(d.keys || []));
-      if (page >= (d.total_pages || 1)) break;
-    }
-    const teams = await listTeams();
+    const [keyList, teams] = await Promise.all([fetchAllKeys(), listTeams()]);
     if (teamId && !teams.some((t) => t.team_id === teamId)) {
       return res.status(400).json({ error: "알 수 없는 학급/조입니다" });
     }
@@ -392,7 +434,10 @@ app.post("/api/provider-keys/preview", requireAdmin, async (req, res) => {
 app.post("/api/provider-keys", requireAdmin, async (req, res) => {
   try {
     const created = await registerProvider(req.body, { litellm, store: providerStore });
-    console.log(`${req.adminEmail} 이(가) 공급자 키 등록: ${created.slug}`);
+    record(req, "provider.create", created.slug, {
+      label: created.label, provider: created.provider, budget: created.max_budget,
+      models: (created.models || []).map((m) => m.call_name),
+    }, `공급자 키 등록: ${created.slug}`);
     res.json(created);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -404,7 +449,10 @@ app.post("/api/provider-keys/update", requireAdmin, async (req, res) => {
   try {
     const keys = await fetchAllKeys();
     const updated = await updateProvider(req.body, { litellm, store: providerStore, keys });
-    console.log(`${req.adminEmail} 이(가) 공급자 키 수정: ${updated.slug}`);
+    record(req, "provider.update", updated.slug, {
+      label: updated.label, budget: updated.max_budget, secret_changed: Boolean(req.body.api_key),
+      models: (updated.models || []).map((m) => m.call_name),
+    }, `공급자 키 수정: ${updated.slug}`);
     res.json(updated);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -413,14 +461,15 @@ app.post("/api/provider-keys/update", requireAdmin, async (req, res) => {
 
 app.post("/api/provider-keys/preview-stored", requireAdmin, async (req, res) => {
   try {
-    const record = providerStore.get(req.body.id);
-    if (!record || record.kind === "pool") return res.status(404).json({ error: "공급자 키를 찾을 수 없습니다" });
+    const stored = providerStore.get(req.body.id);
+    if (!stored || stored.kind === "pool") return res.status(404).json({ error: "공급자 키를 찾을 수 없습니다" });
+    const started = Date.now();
     const models = await listProviderModels({
-      provider: record.provider,
-      apiKey: record.api_key,
-      apiBase: record.api_base,
+      provider: stored.provider,
+      apiKey: stored.api_key,
+      apiBase: stored.api_base,
     });
-    res.json({ models });
+    res.json({ models, latency_ms: Date.now() - started });
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
   }
@@ -428,14 +477,15 @@ app.post("/api/provider-keys/preview-stored", requireAdmin, async (req, res) => 
 
 app.get("/api/provider-pools/activity", requireAdmin, async (req, res) => {
   try {
-    const record = providerStore.get(req.query.id);
-    if (!record || record.kind !== "pool") return res.status(404).json({ error: "묶음을 찾을 수 없습니다" });
-    const end = new Date();
-    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const ymd = (date) => date.toISOString().slice(0, 10);
-    const data = await litellm(`/spend/logs?start_date=${ymd(start)}&end_date=${ymd(end)}`);
-    const rows = Array.isArray(data) ? data : (data.logs || data.data || []);
-    res.json({ calls: matchPoolCalls(record, rows) });
+    const pool = providerStore.get(req.query.id);
+    if (!pool || pool.kind !== "pool") return res.status(404).json({ error: "묶음을 찾을 수 없습니다" });
+    // /spend/logs 는 날짜를 주면 일별 요약을 돌려준다. 개별 호출은 v2 에서 모델 그룹으로 거른다.
+    const rows = [];
+    for (const model of pool.models || []) {
+      const data = await litellm(activityQuery({ limit: 30, hours: 24 * 7, modelGroup: model.call_name }));
+      rows.push(...rowsOf(data));
+    }
+    res.json({ calls: matchPoolCalls(pool, rows) });
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
   }
@@ -444,7 +494,10 @@ app.get("/api/provider-pools/activity", requireAdmin, async (req, res) => {
 app.post("/api/provider-pools", requireAdmin, async (req, res) => {
   try {
     const created = await registerPool(req.body, { litellm, store: providerStore });
-    console.log(`${req.adminEmail} 이(가) 공급자 묶음 등록: ${created.slug}`);
+    record(req, "pool.create", created.slug, {
+      label: created.label, budget: created.max_budget,
+      members: (created.members || []).map((m) => `${m.label}×${m.weight}`),
+    }, `공급자 묶음 등록: ${created.slug}`);
     res.json(created);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -455,8 +508,10 @@ app.post("/api/provider-keys/delete", requireAdmin, async (req, res) => {
   if (!req.body.id) return res.status(400).json({ error: "id가 필요합니다" });
   try {
     const keys = await fetchAllKeys();
+    const doomed = providerStore.get(req.body.id);
     res.json(await deleteProvider(req.body.id, { litellm, store: providerStore, keys }));
-    console.log(`${req.adminEmail} 이(가) 공급자 키 삭제: ${req.body.id}`);
+    record(req, doomed?.kind === "pool" ? "pool.delete" : "provider.delete", doomed?.slug || req.body.id,
+      { label: doomed?.label }, `공급자 키 삭제: ${req.body.id}`);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
   }
@@ -475,13 +530,7 @@ app.get("/api/models", requireAdmin, async (req, res) => {
 // 키 목록 (사용량 포함). size는 LiteLLM이 100까지만 허용하므로 페이지를 돌며 모두 모은다.
 app.get("/api/keys", requireAdmin, async (req, res) => {
   try {
-    const keys = [];
-    for (let page = 1; ; page++) {
-      const data = await litellm(`/key/list?return_full_object=true&size=100&page=${page}`);
-      keys.push(...(data.keys || []));
-      if (page >= (data.total_pages || 1)) break;
-    }
-    res.json({ keys });
+    res.json({ keys: await fetchAllKeys() });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
@@ -513,7 +562,10 @@ app.post("/api/keys", requireAdmin, async (req, res) => {
       team_id: req.body.team_id || undefined,
       ...params,
     });
-    console.log(`${req.adminEmail} 이(가) 키 발급: ${slot.alias}`);
+    record(req, "key.issue", slot.alias, {
+      team: await teamLabel(req.body.team_id), budget: params.max_budget, models: params.models,
+      duration: params.duration || null,
+    }, `키 발급: ${slot.alias}`);
     res.json(data);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -538,7 +590,9 @@ app.post("/api/keys/adjust", requireAdmin, async (req, res) => {
     if (out.add_budget != null) bits.push(`+$${out.add_budget}`);
     if (out.add_days != null) bits.push(`+${out.add_days}일`);
     if (out.entry?.expires && out.add_days == null) bits.push(`만료 ${out.entry.expires}`);
-    console.log(`${req.adminEmail} 이(가) 키 충전·연장: ${out.alias || out.token.slice(0, 12)} ${bits.join(" ")}`);
+    record(req, "key.adjust", out.alias || out.token.slice(0, 12), {
+      add_budget: out.add_budget, add_days: out.add_days, max_budget: out.max_budget, expires: out.expires,
+    }, `키 충전·연장: ${out.alias || out.token.slice(0, 12)} ${bits.join(" ")}`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -566,31 +620,37 @@ app.post("/api/keys/update", requireAdmin, async (req, res) => {
     const payload = { key: req.body.token, ...keyParams(source, { clearEmpty: true }) };
     if (req.body.team_id !== undefined) payload.team_id = req.body.team_id || null;
     const data = await litellm("/key/update", "POST", payload);
-    console.log(`${req.adminEmail} 이(가) 키 수정: ${req.body.token.slice(0, 12)}...`);
+    record(req, "key.update", req.body.alias || req.body.token.slice(0, 12), {
+      budget: req.body.budget, team_id: req.body.team_id, models: req.body.models,
+      rpm_limit: req.body.rpm_limit, tpm_limit: req.body.tpm_limit, duration: req.body.duration || null,
+    }, `키 수정: ${req.body.token.slice(0, 12)}...`);
     res.json(data);
   } catch (e) {
-    res.status(502).json({ error: e.message });
+    res.status(e.status || 502).json({ error: e.message });
   }
 });
 
-// 키 차단/해제 (삭제하지 않고 일시 정지)
+// 유출된 키를 막고 같은 별칭·남은 예산으로 새 키를 만든다
 app.post("/api/keys/reissue", requireAdmin, async (req, res) => {
   if (!req.body.token) return res.status(400).json({ error: "token이 필요합니다" });
   try {
     const out = await reissueKey(req.body.token, { litellm });
-    console.log(`${req.adminEmail} 이(가) 키 폐기 후 재발급: ${out.key_alias} (이전 ${out.retired_alias})`);
+    record(req, "key.reissue", out.key_alias, { retired_alias: out.retired_alias, budget: out.max_budget },
+      `키 폐기 후 재발급: ${out.key_alias} (이전 ${out.retired_alias})`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
   }
 });
 
+// 키 차단/해제 (삭제하지 않고 일시 정지)
 app.post("/api/keys/block", requireAdmin, async (req, res) => {
   if (!req.body.token) return res.status(400).json({ error: "token이 필요합니다" });
   try {
     const path = req.body.blocked ? "/key/block" : "/key/unblock";
     const data = await litellm(path, "POST", { key: req.body.token });
-    console.log(`${req.adminEmail} 이(가) 키 ${req.body.blocked ? "차단" : "차단 해제"}`);
+    record(req, req.body.blocked ? "key.block" : "key.unblock", req.body.alias || req.body.token.slice(0, 12), null,
+      `키 ${req.body.blocked ? "차단" : "차단 해제"}`);
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: e.message });
@@ -619,7 +679,9 @@ app.post("/api/keys/delete", requireAdmin, async (req, res) => {
         }
       }
     }
-    console.log(`${req.adminEmail} 이(가) 키 삭제: ${keys.length}개`);
+    record(req, "key.delete", [...removedAliases].join(", ") || `${keys.length}개`, {
+      count: keys.length, aliases: [...removedAliases].slice(0, 50),
+    }, `키 삭제: ${keys.length}개`);
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: e.message });
@@ -632,12 +694,115 @@ app.post("/api/keys/revoke", requireAdmin, async (req, res) => {
     const out = await revokeKeys(req.body, { litellm });
     const n = out.results.length;
     const fail = out.results.filter((r) => r.error).length;
-    const verb = out.action === "delete" ? "회수" : "차단";
-    console.log(`${req.adminEmail} 이(가) 일괄 ${verb}: ${n}개 (실패 ${fail})`);
+    const verb = out.action === "delete" ? "회수" : out.action === "unblock" ? "해제" : "차단";
+    record(req, `keys.${out.action}`, (await teamLabel(out.team_id)) || out.filter || `${n}개`, {
+      count: n, failed: fail, filter: out.filter, aliases: out.results.map((r) => r.alias).filter(Boolean).slice(0, 50),
+    }, `일괄 ${verb}: ${n}개 (실패 ${fail})`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
   }
+});
+
+// 선택한 키 또는 학급 전체를 한 번에 충전·연장한다. 이력은 키마다 남는다.
+app.post("/api/keys/adjust/bulk", requireAdmin, async (req, res) => {
+  try {
+    const out = await adjustKeys(req.body, { litellm, actor: req.adminEmail });
+    const n = out.results.length;
+    const fail = out.results.filter((r) => r.error).length;
+    const bits = [];
+    if (out.add_budget != null) bits.push(`+$${out.add_budget}`);
+    if (out.add_days != null) bits.push(`+${out.add_days}일`);
+    if (out.expires) bits.push(`만료 ${out.expires}`);
+    record(req, "keys.adjust", (await teamLabel(out.team_id)) || `${n}개`, {
+      count: n, failed: fail, add_budget: out.add_budget, add_days: out.add_days, expires: out.expires,
+      aliases: out.results.map((r) => r.alias).filter(Boolean).slice(0, 50),
+    }, `일괄 충전·연장: ${n}개 ${bits.join(" ")} (실패 ${fail})`);
+    res.json(out);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+// 학급 봉쇄/해제. 해제는 봉쇄로 막은 키만 다시 연다.
+app.post("/api/teams/lockdown", requireAdmin, async (req, res) => {
+  const action = String(req.body.action || "lock");
+  if (action !== "lock" && action !== "unlock") {
+    return res.status(400).json({ error: "action은 lock 또는 unlock 이어야 합니다" });
+  }
+  try {
+    const out = action === "lock"
+      ? await lockdownTeam(req.body, { litellm, actor: req.adminEmail })
+      : await liftLockdown(req.body, { litellm });
+    const n = out.results.filter((r) => !r.skipped && !r.error).length;
+    const fail = out.results.filter((r) => r.error).length;
+    record(req, action === "lock" ? "team.lock" : "team.unlock", out.team_alias || out.team_id, {
+      team_id: out.team_id, keys: n, failed: fail, reason: req.body.reason || null,
+    }, `학급 ${action === "lock" ? "봉쇄" : "봉쇄 해제"}: ${out.team_alias || out.team_id} (${n}개, 실패 ${fail})`);
+    res.json(out);
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+// 최근 호출. 프롬프트와 응답은 주지 않는다.
+app.get("/api/activity", requireAdmin, async (req, res) => {
+  try {
+    let query = activityQuery({
+      limit: req.query.limit,
+      hours: req.query.hours,
+      status: String(req.query.status || ""),
+    });
+    // 키 상세에서 한 키의 호출만 본다. LiteLLM 은 해시 토큰으로 거른다.
+    if (req.query.token) query += `&api_key=${encodeURIComponent(String(req.query.token))}`;
+    const data = await litellm(query);
+    const teams = await listTeams().catch(() => []);
+    const teamsById = new Map(teams.map((t) => [t.team_id, t]));
+    const items = rowsOf(data).map((row) => toActivity(row, { teamsById }));
+    res.json({ items, summary: summarizeActivity(items), at: new Date().toISOString() });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+app.get("/api/audit", requireAdmin, (req, res) => {
+  res.json({
+    entries: auditLog.list({
+      limit: req.query.limit,
+      action: String(req.query.action || ""),
+      actor: String(req.query.actor || ""),
+      q: String(req.query.q || ""),
+    }),
+    total: auditLog.size(),
+  });
+});
+
+// 관제 화면 상단의 시스템 표시등. LiteLLM·DB·저장소 상태를 한 번에 본다.
+app.get("/api/status", requireAdmin, async (_req, res) => {
+  const t0 = Date.now();
+  const litellmState = { live: false, db: null, latency_ms: null, error: null };
+  try {
+    const ready = await litellm("/health/readiness");
+    litellmState.live = true;
+    litellmState.db = ready && ready.db ? String(ready.db) : null;
+    litellmState.version = ready && (ready.litellm_version || ready.version) ? String(ready.litellm_version || ready.version) : null;
+  } catch (e) {
+    litellmState.error = e.message;
+  }
+  litellmState.latency_ms = Date.now() - t0;
+  res.json({
+    version: APP_VERSION,
+    now: new Date().toISOString(),
+    uptime_s: Math.round((Date.now() - STARTED_AT) / 1000),
+    litellm: litellmState,
+    stores: {
+      users: { ok: !usersStore.isCorrupt(), count: usersStore.isCorrupt() ? null : usersStore.list().length },
+      providers: { ok: !providerStore.isCorrupt(), count: providerStore.isCorrupt() ? null : providerStore.list().length },
+      audit: { count: auditLog.size() },
+    },
+    proxy_url: PUBLIC_PROXY_URL || null,
+    proxy_port: Number(LITELLM_PORT) || 4000,
+  });
 });
 
 app.get("/api/me", requireRegistered, (req, res) => {
@@ -646,6 +811,9 @@ app.get("/api/me", requireRegistered, (req, res) => {
     name: req.user.name,
     role: req.user.role,
     key_aliases: req.user.key_aliases || [],
+    proxy_url: PUBLIC_PROXY_URL || null,
+    proxy_port: Number(LITELLM_PORT) || 4000,
+    version: APP_VERSION,
   });
 });
 
@@ -691,6 +859,25 @@ app.get("/api/my/analytics", requireRegistered, async (req, res) => {
   }
 });
 
+// 등록 사용자가 자기 키의 최근 호출과 실패 이유를 본다.
+app.get("/api/my/activity", requireRegistered, async (req, res) => {
+  if (req.user.role === "admin") return res.status(403).json({ error: "관리자는 /api/activity를 사용하세요" });
+  try {
+    const mine = (await fetchAllKeys()).filter((k) => (req.user.key_aliases || []).includes(k.key_alias));
+    const items = [];
+    for (const key of mine.slice(0, 10)) {
+      const q = activityQuery({ limit: 20, hours: 24 * 7 }) + `&api_key=${encodeURIComponent(key.token)}`;
+      items.push(...rowsOf(await litellm(q)).map((row) => toActivity(row)));
+    }
+    items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    // 학생 화면에는 IP·해시를 싣지 않는다.
+    const clean = items.slice(0, 30).map(({ token, ip, ...rest }) => rest);
+    res.json({ items: clean, summary: summarizeActivity(clean) });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
 app.get("/api/users", requireAdmin, (req, res) => {
   if (!guardStore(res)) return;
   res.json({ users: usersStore.list() });
@@ -705,7 +892,8 @@ app.post("/api/users", requireAdmin, (req, res) => {
       name: req.body.name,
       key_aliases: req.body.key_aliases,
     }, req.adminEmail);
-    console.log(`${req.adminEmail} 이(가) 사용자 등록: ${user.email}`);
+    record(req, "user.create", user.email, { name: user.name, key_aliases: user.key_aliases },
+      `사용자 등록: ${user.email}`);
     res.json(user);
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -720,6 +908,8 @@ app.post("/api/users/update", requireAdmin, (req, res) => {
       name: req.body.name,
       key_aliases: req.body.key_aliases,
     });
+    record(req, "user.update", user.email, { name: user.name, key_aliases: user.key_aliases },
+      `사용자 수정: ${user.email}`);
     res.json(user);
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -731,6 +921,7 @@ app.post("/api/users/delete", requireAdmin, (req, res) => {
   if (!req.body.email) return res.status(400).json({ error: "이메일이 필요합니다" });
   try {
     usersStore.remove(req.body.email);
+    record(req, "user.delete", String(req.body.email).toLowerCase(), null, `사용자 삭제: ${req.body.email}`);
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });

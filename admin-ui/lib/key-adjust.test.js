@@ -9,6 +9,7 @@ const {
   unwrapKeyInfo,
   remainingBudget,
   adjustKey,
+  adjustKeys,
   keyDetail,
 } = require("./key-adjust");
 
@@ -281,5 +282,53 @@ describe("keyDetail", () => {
   it("token 없으면 400", async () => {
     const { litellm } = mockLiteLLM();
     await assert.rejects(() => keyDetail("", { litellm }), (e) => e.status === 400);
+  });
+});
+
+describe("adjustKeys (일괄 충전·연장)", () => {
+  function classKeys() {
+    return [
+      key({ key_alias: "20261001-홍길동", token: "sk-a", team_id: "t1", max_budget: 2 }),
+      key({ key_alias: "20261002-김철수", token: "sk-b", team_id: "t1", max_budget: 2, blocked: true }),
+      key({ key_alias: "20261001-홍길동-폐기", token: "sk-old", team_id: "t1", max_budget: 2, blocked: true }),
+      key({ key_alias: "교사-시연", token: "sk-unl", team_id: "t1", max_budget: null }),
+      key({ key_alias: "다른반", token: "sk-z", team_id: "t2", max_budget: 2 }),
+    ];
+  }
+
+  it("학급 전체에 금액을 더하고 폐기된 키와 다른 학급은 건드리지 않는다", async () => {
+    const { litellm, calls, store } = mockLiteLLM({ keys: classKeys() });
+    const out = await adjustKeys({ team_id: "t1", add_budget: 1 }, { litellm, now: NOW, actor: "t@school.kr" });
+    const byAlias = Object.fromEntries(out.results.map((r) => [r.alias, r]));
+    assert.equal(out.results.length, 3);
+    assert.equal(byAlias["20261001-홍길동"].max_budget, 3);
+    assert.equal(byAlias["20261002-김철수"].max_budget, 3);
+    assert.match(byAlias["교사-시연"].error, /무제한/);
+    assert.equal(store.find((k) => k.token === "sk-old").max_budget, 2);
+    assert.equal(store.find((k) => k.token === "sk-z").max_budget, 2);
+    const hist = store.find((k) => k.token === "sk-a").metadata[HISTORY_KEY];
+    assert.equal(hist.at(-1).by, "t@school.kr");
+    assert.equal(hist.at(-1).add_budget, 1);
+    assert.equal(calls.filter((c) => c.path.startsWith("/key/info")).length, 0);
+    assert.equal(calls.filter((c) => c.path.startsWith("/key/list")).length, 1);
+  });
+
+  it("고른 키만 연장하고 없는 키는 실패로 남긴다", async () => {
+    const { litellm } = mockLiteLLM({ keys: classKeys() });
+    const out = await adjustKeys({ tokens: ["sk-z", "sk-missing"], add_days: 7 }, { litellm, now: NOW });
+    assert.equal(out.results[0].alias, "다른반");
+    assert.equal(out.results[0].error, undefined);
+    assert.equal(out.results[1].error, "키를 찾을 수 없습니다");
+  });
+
+  it("금액·기간이 없거나 대상이 없으면 400", async () => {
+    const { litellm } = mockLiteLLM({ keys: classKeys() });
+    await assert.rejects(() => adjustKeys({ team_id: "t1" }, { litellm, now: NOW }), (e) => e.status === 400);
+    await assert.rejects(() => adjustKeys({ add_budget: 1 }, { litellm, now: NOW }), (e) => e.status === 400);
+    await assert.rejects(
+      () => adjustKeys({ team_id: "t1", add_days: 7, expires: "2026-12-31" }, { litellm, now: NOW }),
+      (e) => e.status === 400
+    );
+    await assert.rejects(() => adjustKeys({ team_id: "nope", add_budget: 1 }, { litellm, now: NOW }), (e) => e.status === 400);
   });
 });
