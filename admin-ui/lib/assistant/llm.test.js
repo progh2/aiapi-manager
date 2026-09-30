@@ -49,10 +49,10 @@ test("OpenAI 방식: 도구 명세를 보내고 도구 호출을 읽는다", asy
   assert.equal(req.body.temperature, 0.3);
 });
 
-test("OpenAI 방식: 도구 결과 메시지를 규격대로 바꿔 보낸다", async (t) => {
+test("Chat Completions: 도구 결과 메시지를 규격대로 바꿔 보낸다", async (t) => {
   const f = await fakeServer(() => ({ json: { choices: [{ message: { content: "소진 키는 2개예요." } }], usage: {} } }));
   t.after(() => f.server.close());
-  const conn = { kind: "openai", flavor: "openai", base: `${f.base}/v1`, apiKey: "k", model: "gpt-5-mini" };
+  const conn = { kind: "openai", flavor: "compatible", base: `${f.base}/v1`, apiKey: "k", model: "gpt-5-mini" };
   const out = await llm.chat(conn, {
     messages: [
       { role: "user", content: "소진 키?" },
@@ -67,9 +67,9 @@ test("OpenAI 방식: 도구 결과 메시지를 규격대로 바꿔 보낸다", 
   assert.equal(body.messages[1].tool_calls[0].function.arguments, "{\"state\":\"over\"}");
   assert.equal(body.messages[1].content, null);
   assert.deepEqual(body.messages[2], { role: "tool", tool_call_id: "call_1", content: "{\"count\":2}" });
-  // 추론형(gpt-5)은 temperature 를 빼고 max_completion_tokens 에 여유를 둔다
+  // 추론형(gpt-5)은 temperature 를 빼고 출력 한도에 여유를 둔다
   assert.equal(body.temperature, undefined);
-  assert.equal(body.max_completion_tokens, 3700);
+  assert.equal(body.max_tokens, 3700);
   assert.equal(body.reasoning_effort, "low");
 });
 
@@ -202,6 +202,9 @@ test("주소 정리와 추론형 모델 판별", () => {
   assert.equal(llm.isReasoningModel("gpt-5-mini"), true);
   assert.equal(llm.isReasoningModel("pk_a/o4-mini"), true);
   assert.equal(llm.isReasoningModel("gpt-4.1-mini"), false);
+  assert.equal(llm.isReasoningModel("gpt-6-luna"), true);
+  assert.equal(llm.isReasoningModel("openai-a/gpt-5.6-luna"), true);
+  assert.equal(llm.isReasoningModel("gpt-5-chat-latest"), false);
   const proxy = llm.connectionFrom({ mode: "proxy", proxy_model: "gpt-4o-mini", proxy_key: "sk-a" }, { proxyBase: "http://litellm:4000/" });
   assert.deepEqual([proxy.base, proxy.apiKey, proxy.model], ["http://litellm:4000/v1", "sk-a", "gpt-4o-mini"]);
 });
@@ -237,4 +240,106 @@ test("Ollama 목록에 capabilities 가 있으면 /api/show 를 부르지 않는
   const list = await llm.listModels({ kind: "ollama", base: f.base });
   assert.equal(list[0].tools, true);
   assert.equal(f.seen.length, 1);
+});
+
+// ---------------------------------------------------------------- Responses API (GPT-5.x·GPT-6)
+const LUNA_CHAT_ERROR = "Function tools with reasoning_effort are not supported for gpt-6-luna in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.";
+
+test("OpenAI 직접 연결은 /v1/responses 로 묻고 도구 호출·사용량을 읽는다", async (t) => {
+  const f = await fakeServer((req) => {
+    if (req.url !== "/v1/responses") return { status: 404, json: { error: { message: "not here" } } };
+    return { json: {
+      model: "gpt-6-luna",
+      status: "completed",
+      output: [
+        { type: "reasoning", id: "rs_1", summary: [], encrypted_content: "ENC" },
+        { type: "function_call", id: "fc_1", call_id: "call_1", name: "find_keys", arguments: "{\"state\":\"over\"}" },
+      ],
+      usage: { input_tokens: 900, output_tokens: 40 },
+    } };
+  });
+  t.after(() => f.server.close());
+  const conn = { kind: "openai", flavor: "openai", base: `${f.base}/v1`, apiKey: fakeKey("0004"), model: "gpt-6-luna" };
+  const out = await llm.chat(conn, { messages: [{ role: "system", content: "sys" }, { role: "user", content: "소진 키?" }], tools: TOOLS, maxTokens: 700 });
+  assert.deepEqual(out.toolCalls, [{ id: "call_1", item_id: "fc_1", name: "find_keys", arguments: { state: "over" } }]);
+  assert.deepEqual(out.usage, { prompt_tokens: 900, completion_tokens: 40 });
+  assert.equal(out.reasoning.length, 1);
+  const body = f.seen[0].body;
+  assert.equal(body.instructions, "sys");
+  assert.deepEqual(body.input, [{ role: "user", content: "소진 키?" }]);
+  assert.equal(body.store, false);
+  assert.deepEqual(body.reasoning, { effort: "low" });
+  assert.deepEqual(body.include, ["reasoning.encrypted_content"]);
+  assert.equal(body.max_output_tokens, 3700);
+  assert.equal(body.temperature, undefined);
+  assert.deepEqual(body.tools[0], { type: "function", name: "find_keys", description: "키 찾기", parameters: TOOLS[0].parameters, strict: false });
+});
+
+test("Responses 입력: 도구 호출과 결과를 function_call·function_call_output 으로, 추론 항목은 그대로 돌려준다", () => {
+  const { instructions, input } = llm.toResponsesInput([
+    { role: "system", content: "sys" },
+    { role: "user", content: "소진 키?" },
+    { role: "assistant", content: "", reasoning: [{ type: "reasoning", id: "rs_1", encrypted_content: "ENC" }], tool_calls: [{ id: "call_1", item_id: "fc_1", name: "find_keys", arguments: { state: "over" } }] },
+    { role: "tool", tool_call_id: "call_1", name: "find_keys", content: "{\"count\":2}" },
+    { role: "assistant", content: "2개예요" },
+  ]);
+  assert.equal(instructions, "sys");
+  assert.deepEqual(input, [
+    { role: "user", content: "소진 키?" },
+    { type: "reasoning", id: "rs_1", encrypted_content: "ENC" },
+    { type: "function_call", call_id: "call_1", name: "find_keys", arguments: "{\"state\":\"over\"}", id: "fc_1" },
+    { type: "function_call_output", call_id: "call_1", output: "{\"count\":2}" },
+    { role: "assistant", content: "2개예요" },
+  ]);
+  // 추론 항목이 없으면 function_call 에 id 를 붙이지 않는다(짝 잃은 항목 오류 방지)
+  const plain = llm.toResponsesInput([{ role: "assistant", content: "", tool_calls: [{ id: "c", item_id: "fc_9", name: "x", arguments: {} }] }]).input;
+  assert.equal(plain[0].id, undefined);
+});
+
+test("호환 서버·프록시: Chat Completions 가 /v1/responses 를 요구하면 Responses 로 바꾸고 기억한다", async (t) => {
+  const f = await fakeServer((req) => {
+    if (req.url === "/v1/chat/completions") return { status: 400, json: { error: { message: LUNA_CHAT_ERROR, type: "invalid_request_error", param: "reasoning_effort" } } };
+    return { json: { status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "안녕하세요!" }] }], usage: { input_tokens: 10, output_tokens: 5 } } };
+  });
+  t.after(() => f.server.close());
+  const conn = { kind: "openai", flavor: "proxy", base: `${f.base}/v1`, apiKey: fakeKey("0005"), model: "openai-a/gpt-6-luna" };
+  const a = await llm.chat(conn, { messages: [{ role: "user", content: "hi" }], tools: TOOLS });
+  assert.equal(a.content, "안녕하세요!");
+  assert.deepEqual(f.seen.map((r) => r.url), ["/v1/chat/completions", "/v1/responses"]);
+  await llm.chat(conn, { messages: [{ role: "user", content: "또" }], tools: TOOLS });
+  assert.equal(f.seen.at(-1).url, "/v1/responses", "두 번째부터는 바로 Responses");
+  assert.equal(f.seen.length, 3);
+});
+
+test("Responses 가 없는 호환 서버면 추론을 끄고(reasoning_effort none) Chat Completions 로 묻는다", async (t) => {
+  const f = await fakeServer((req, body) => {
+    if (req.url === "/v1/responses") return { status: 404, json: { error: "404 page not found" } };
+    if (body.reasoning_effort !== "none") return { status: 400, json: { error: { message: LUNA_CHAT_ERROR } } };
+    return { json: { choices: [{ message: { content: "", tool_calls: [{ id: "c1", type: "function", function: { name: "find_keys", arguments: "{}" } }] } }], usage: {} } };
+  });
+  t.after(() => f.server.close());
+  const conn = { kind: "openai", flavor: "compatible", base: `${f.base}/v1`, model: "gpt-6-luna" };
+  const out = await llm.chat(conn, { messages: [{ role: "user", content: "x" }], tools: TOOLS });
+  assert.equal(out.toolCalls[0].name, "find_keys");
+  assert.deepEqual(f.seen.map((r) => [r.url, r.body.reasoning_effort]), [["/v1/chat/completions", "low"], ["/v1/responses", undefined], ["/v1/chat/completions", "none"]]);
+});
+
+test("모델이 받지 않는 매개변수는 빼고 다시 묻는다", async (t) => {
+  const f = await fakeServer((req, body) => {
+    if (body.temperature !== undefined) return { status: 400, json: { error: { message: "Unsupported value: 'temperature' does not support 0.3 with this model. Only the default (1) value is supported.", param: "temperature", code: "unsupported_value" } } };
+    if (body.reasoning) return { status: 400, json: { error: { message: "Unsupported parameter: 'reasoning.effort' is not supported with this model.", param: "reasoning.effort" } } };
+    return { json: { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }], usage: {} } };
+  });
+  t.after(() => f.server.close());
+  const plain = { kind: "openai", flavor: "openai", base: `${f.base}/v1`, apiKey: fakeKey("0006"), model: "gpt-4.1-mini" };
+  assert.equal((await llm.chat(plain, { messages: [{ role: "user", content: "x" }] })).content, "ok");
+  const reasoning = { ...plain, model: "gpt-5-chat-latest-ish" };
+  assert.equal((await llm.chat(reasoning, { messages: [{ role: "user", content: "x" }] })).content, "ok");
+});
+
+test("추론만 하다 한도에 걸리면 알아듣게 알린다", async (t) => {
+  const f = await fakeServer(() => ({ json: { status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output: [{ type: "reasoning", id: "rs" }], usage: {} } }));
+  t.after(() => f.server.close());
+  const conn = { kind: "openai", flavor: "openai", base: `${f.base}/v1`, apiKey: fakeKey("0007"), model: "gpt-6-luna" };
+  await assert.rejects(llm.chat(conn, { messages: [{ role: "user", content: "x" }] }), (e) => e.code === "incomplete" && /답변 길이/.test(e.message));
 });

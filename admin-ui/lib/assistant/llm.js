@@ -1,4 +1,4 @@
-// AI 엘피가 쓰는 언어 모델 연결. OpenAI 호환(/v1/chat/completions)과 Ollama(/api/chat) 두 방식.
+// AI 엘피가 쓰는 언어 모델 연결. OpenAI(/v1/responses·/v1/chat/completions)와 Ollama(/api/chat).
 // 안에서는 메시지를 한 모양으로 다룬다:
 //   { role: "system" | "user" | "assistant", content }
 //   { role: "assistant", content, tool_calls: [{ id, name, arguments: {} }] }
@@ -47,10 +47,13 @@ function ollamaRoot(url) {
   return trimSlash(url).replace(/\/v1$/i, "").replace(/\/api$/i, "");
 }
 
-// o1·o3·o4·gpt-5 계열은 temperature 를 받지 않고, 출력 한도에 추론 토큰이 들어간다.
+// o 시리즈와 gpt-5 이후(gpt-5.x·gpt-6 …)는 추론 모델이다. temperature 를 받지 않고, 출력 한도에 추론 토큰이 들어간다.
+// "-chat" 판은 추론하지 않는다.
 function isReasoningModel(model) {
   const id = String(model || "").split("/").pop().toLowerCase();
-  return /^(o\d|gpt-5)/.test(id);
+  if (/^o\d/.test(id)) return true;
+  const m = /^gpt-(\d+)/.exec(id);
+  return Boolean(m && Number(m[1]) >= 5 && !/-chat(-latest)?$/.test(id));
 }
 
 function connectionFrom(cfg, { proxyBase = "" } = {}) {
@@ -77,6 +80,11 @@ function withTimeout(signal, ms) {
 
 function classify(status, message, conn) {
   const msg = scrub(message);
+  // GPT-5.x·GPT-6: "Function tools with reasoning_effort are not supported … use /v1/responses …",
+  // "This model is only supported in v1/responses and not in v1/chat/completions."
+  if (status >= 400 && status < 500 && /(use|only supported in|supported only in)\s+(the\s+)?\/?v1\/responses|responses api only/i.test(msg)) {
+    return new LlmError(`이 모델은 Responses API(/v1/responses)로 불러야 합니다: ${msg}`, { status: 400, code: "use_responses" });
+  }
   if (/does not support tools|tools? (are|is)? ?not supported|not support(ed)? (function|tool)|tool_choice|function.?calling (is )?not/i.test(msg)) {
     return new LlmError(`이 모델은 도구 호출을 지원하지 않습니다: ${msg}`, { status: 400, code: "tools_unsupported" });
   }
@@ -128,7 +136,11 @@ async function request(conn, path, { method = "GET", body, signal, timeoutMs = D
   try { data = text ? JSON.parse(text) : null; } catch { data = null; }
   if (!resp.ok) {
     const raw = data && (typeof data.error === "string" ? data.error : data.error && data.error.message) || data && data.message || text;
-    throw classify(resp.status, raw, conn);
+    const err = classify(resp.status, raw, conn);
+    // 모델이 받지 않는 매개변수(예: temperature)는 빼고 다시 물을 수 있게 남긴다.
+    err.param = (data && data.error && typeof data.error === "object" && data.error.param) || null;
+    err.detail = scrub(raw);
+    throw err;
   }
   if (data == null) throw new LlmError(`모델 서버가 JSON 이 아닌 응답을 보냈습니다: ${scrub(text).slice(0, 80)}`, { code: "bad_response" });
   return data;
@@ -263,7 +275,7 @@ function leakedThinking(msg) {
 // ---------------------------------------------------------------- 대화
 /**
  * 한 번 묻고 답을 받는다.
- * @returns {{ content: string, toolCalls: Array<{id,name,arguments}>, usage: {prompt_tokens, completion_tokens}, model: string }}
+ * @returns {{ content: string, toolCalls: Array<{id,name,arguments}>, usage: {prompt_tokens, completion_tokens}, model: string, reasoning?: Array }}
  */
 async function chat(conn, { messages, tools = [], maxTokens = 700, temperature = 0.3, numCtx = 8192, fast = true, signal, timeoutMs } = {}) {
   if (!conn || !conn.model) throw new LlmError("모델이 정해지지 않았습니다. AI 엘피 설정에서 모델을 고르세요.", { status: 400, code: "no_model" });
@@ -309,18 +321,69 @@ async function chat(conn, { messages, tools = [], maxTokens = 700, temperature =
     };
   }
 
+  const opts = { messages, tools, maxTokens, temperature, fast, signal, timeoutMs, names };
+  const key = `${conn.base}|${conn.model}`;
+  // OpenAI 직접 연결은 Responses API 로 묻는다(새 모델의 도구 호출 + 추론이 여기서만 된다).
+  if (conn.flavor === "openai" || responsesModels.has(key)) return chatResponses(conn, opts);
+  if (noReasoningChat.has(key)) return chatCompletions(conn, { ...opts, effort: "none" });
+  try {
+    return await chatCompletions(conn, opts);
+  } catch (e) {
+    if (e.code !== "use_responses") throw e;
+    try {
+      const out = await chatResponses(conn, opts);
+      responsesModels.add(key);
+      return out;
+    } catch (e2) {
+      // 호환 서버에 /v1/responses 가 없으면 추론을 끄고(Chat Completions 가 도구를 허용하는 길) 다시 묻는다.
+      if (!(e2.status === 404 || e2.status === 405 || e2.code === "model_not_found")) throw e2;
+      noReasoningChat.add(key);
+      return chatCompletions(conn, { ...opts, effort: "none" });
+    }
+  }
+}
+
+// OpenAI 는 GPT-5.x·GPT-6 부터 "도구 호출 + 추론"을 /v1/responses 에서만 받는다. 호환 서버·프록시는
+// Chat Completions 로 묻다가 그런 오류가 나면 Responses 로 바꾸고, 바꾼 모델은 기억한다.
+const responsesModels = new Set();
+const noReasoningChat = new Set();
+
+function unsupportedParam(e) {
+  if (e.param) return String(e.param);
+  const m = /unsupported (?:parameter|value)[^']*'([A-Za-z_.]+)'/i.exec(e.detail || "") || /'([A-Za-z_.]+)' is not supported/i.exec(e.detail || "");
+  return m ? m[1] : null;
+}
+
+// 모델마다 받는 매개변수가 다르다(temperature·reasoning·max_tokens 등). 거절된 것만 빼거나 바꿔 다시 묻는다.
+async function postAdaptive(conn, path, body, opts) {
+  for (let tries = 0; ; tries++) {
+    try {
+      return await request(conn, path, { method: "POST", body, ...opts });
+    } catch (e) {
+      const p = tries < 3 && e.status !== 499 && e.code !== "use_responses" ? unsupportedParam(e) : null;
+      const top = p && p.split(".")[0];
+      if (!top || !(top in body) || ["model", "messages", "input", "tools"].includes(top)) throw e;
+      if (top === "max_tokens") { body.max_completion_tokens = body.max_tokens; delete body.max_tokens; }
+      else if (top === "max_completion_tokens") { body.max_tokens = body.max_completion_tokens; delete body.max_completion_tokens; }
+      else delete body[top];
+    }
+  }
+}
+
+async function chatCompletions(conn, { messages, tools, maxTokens, temperature, fast, signal, timeoutMs, names, effort }) {
   const reasoning = isReasoningModel(conn.model);
   const limit = reasoning ? maxTokens + 3000 : maxTokens;
   const body = { model: conn.model, messages: messages.map(toOpenAi) };
   if (conn.flavor === "openai") body.max_completion_tokens = limit;
   else body.max_tokens = limit;
   if (!reasoning) body.temperature = temperature;
+  else if (effort) body.reasoning_effort = effort;
   else if (fast) body.reasoning_effort = "low";
   if (tools.length) {
     body.tools = toolSpecs(tools);
     body.tool_choice = "auto";
   }
-  const data = await request(conn, "/chat/completions", { method: "POST", body, signal, timeoutMs });
+  const data = await postAdaptive(conn, "/chat/completions", body, { signal, timeoutMs });
   const msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
   const rawContent = Array.isArray(msg.content)
     ? msg.content.map((p) => (typeof p === "string" ? p : p.text || "")).join("")
@@ -333,6 +396,78 @@ async function chat(conn, { messages, tools = [], maxTokens = 700, temperature =
     toolCalls,
     usage: { prompt_tokens: Number(usage.prompt_tokens) || 0, completion_tokens: Number(usage.completion_tokens) || 0 },
     model: data.model || conn.model,
+  };
+}
+
+// 안쪽 메시지 → Responses API 입력. 첫 system 은 instructions 로, 도구 호출은 function_call / function_call_output 항목으로.
+function toResponsesInput(messages) {
+  let instructions = "";
+  const input = [];
+  for (const m of messages) {
+    if (m.role === "system") {
+      if (!instructions) instructions = String(m.content || "");
+      else input.push({ role: "developer", content: String(m.content || "") });
+    } else if (m.role === "assistant" && m.tool_calls && m.tool_calls.length) {
+      // 저장하지 않는(store:false) 대화에서는 추론 항목(암호화)을 함께 돌려줘야 모델이 앞 생각을 잇는다.
+      const withReasoning = Array.isArray(m.reasoning) && m.reasoning.length > 0;
+      if (withReasoning) input.push(...m.reasoning);
+      if (m.content) input.push({ role: "assistant", content: String(m.content) });
+      for (const c of m.tool_calls) {
+        const item = { type: "function_call", call_id: c.id, name: c.name, arguments: JSON.stringify(c.arguments || {}) };
+        if (withReasoning && c.item_id) item.id = c.item_id;
+        input.push(item);
+      }
+    } else if (m.role === "tool") {
+      input.push({ type: "function_call_output", call_id: m.tool_call_id, output: String(m.content ?? "") });
+    } else {
+      input.push({ role: m.role, content: String(m.content ?? "") });
+    }
+  }
+  return { instructions, input };
+}
+
+async function chatResponses(conn, { messages, tools, maxTokens, temperature, fast, signal, timeoutMs, names }) {
+  const reasoning = isReasoningModel(conn.model);
+  const { instructions, input } = toResponsesInput(messages);
+  // store:false — 학교 대화를 OpenAI 쪽에 남기지 않는다.
+  const body = { model: conn.model, input, store: false, max_output_tokens: reasoning ? maxTokens + 3000 : maxTokens };
+  if (instructions) body.instructions = instructions;
+  if (tools.length) {
+    // Responses API 의 함수 도구는 strict 가 기본이라 선택 인자가 있는 우리 스키마를 거절한다. 끈다.
+    body.tools = tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.parameters || { type: "object", properties: {} }, strict: false }));
+    body.tool_choice = "auto";
+  }
+  if (reasoning) {
+    body.reasoning = { effort: fast ? "low" : "medium" };
+    body.include = ["reasoning.encrypted_content"];
+  } else body.temperature = temperature;
+  const data = await postAdaptive(conn, "/responses", body, { signal, timeoutMs });
+  const items = Array.isArray(data.output) ? data.output : [];
+  const calls = [];
+  const kept = [];
+  let text = "";
+  for (const it of items) {
+    if (it.type === "function_call" && it.name) {
+      calls.push({ id: it.call_id || it.id || newCallId(), item_id: it.id, name: it.name, arguments: parseArgs(it.arguments) });
+    } else if (it.type === "message") {
+      text += (it.content || []).map((p) => (typeof p === "string" ? p : p.text || "")).join("");
+    } else if (it.type === "reasoning" && it.encrypted_content) {
+      kept.push(it);
+    }
+  }
+  if (!text && typeof data.output_text === "string") text = data.output_text;
+  const read = calls.length ? { toolCalls: calls, text: stripThinking(text) } : readToolCalls([], stripThinking(text), names);
+  if (!read.toolCalls.length && !read.text && data.status === "incomplete") {
+    const why = data.incomplete_details && data.incomplete_details.reason;
+    throw new LlmError(`모델이 답을 끝내지 못했습니다${why ? ` (${why})` : ""}. 설정에서 답변 길이를 늘리거나 빠른 응답을 켜 보세요.`, { status: 502, code: "incomplete" });
+  }
+  const usage = data.usage || {};
+  return {
+    content: read.text,
+    toolCalls: read.toolCalls,
+    usage: { prompt_tokens: Number(usage.input_tokens) || 0, completion_tokens: Number(usage.output_tokens) || 0 },
+    model: data.model || conn.model,
+    reasoning: kept,
   };
 }
 
@@ -407,6 +542,7 @@ async function listModels(conn, { signal } = {}) {
 module.exports = {
   LlmError,
   leakedThinking,
+  toResponsesInput,
   chat,
   listModels,
   connectionFrom,

@@ -106,7 +106,8 @@ async function runAssistant(o) {
     }
 
     const calls = res.toolCalls.slice(0, MAX_CALLS_PER_STEP);
-    messages.push({ role: "assistant", content: res.content || "", tool_calls: calls });
+    // reasoning: Responses API 추론 항목(암호화). 다음 단계에 그대로 돌려줘야 모델이 생각을 잇는다.
+    messages.push({ role: "assistant", content: res.content || "", tool_calls: calls, reasoning: res.reasoning });
     for (const call of calls) {
       const tool = tools.find((t) => t.name === call.name);
       const sig = `${call.name}:${JSON.stringify(call.arguments || {})}`;
