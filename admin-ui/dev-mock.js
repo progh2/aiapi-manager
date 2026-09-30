@@ -482,6 +482,12 @@ function seed(dataDir) {
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "aiapi-mock-"));
 seed(dataDir);
 
+// 시연용 자동 업데이트 결과(시스템 상태 화면)
+fs.writeFileSync(path.join(dataDir, "auto-update.json"), JSON.stringify({
+  checked_at: new Date().toISOString(), status: "ok", message: "최신 상태입니다", branch: "main", commit: "mock123",
+  subject: "시연용", applied_at: new Date(Date.now() - 3 * 3600000).toISOString(), hours: "",
+}));
+
 // 시연용 키 원문을 보관함에 넣어 학생 조종석에서 볼 수 있게 한다.
 // 3학년B반(2026200x)은 "이 기능 전에 만든 키"처럼 비워 두어 새 키로 교체하는 흐름을 볼 수 있다.
 {
@@ -525,6 +531,7 @@ lite.listen(LITE_PORT, "127.0.0.1", () => {
     AUDIT_LOG_PATH: path.join(dataDir, "audit.jsonl"),
     ASSISTANT_DATA_PATH: path.join(dataDir, "assistant.json"),
     KEY_VAULT_PATH: path.join(dataDir, "key-vault.json"),
+    AUTO_UPDATE_STATUS_PATH: path.join(dataDir, "auto-update.json"),
     PUBLIC_PROXY_URL: process.env.PUBLIC_PROXY_URL || "http://192.168.0.10:4000",
   });
   require("./server.js");

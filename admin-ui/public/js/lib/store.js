@@ -235,6 +235,9 @@ export function alerts() {
   } else if (st && st.litellm && st.litellm.db && st.litellm.db !== "connected") {
     add("crit", "데이터베이스 연결 이상", `LiteLLM 이 DB 를 ${st.litellm.db} 로 보고합니다.`, { station: "log", tab: "system" });
   }
+  if (st && st.auto_update && (st.auto_update.status === "error" || st.auto_update.status === "rolled_back")) {
+    add("warn", st.auto_update.status === "rolled_back" ? "자동 업데이트를 되돌림" : "자동 업데이트 실패", st.auto_update.message || "", { station: "log", tab: "system" });
+  }
   if (st && st.stores && (!st.stores.users.ok || !st.stores.providers.ok)) {
     add("crit", "저장 파일 손상", "users.json 또는 provider-keys.json 을 읽지 못했습니다. 복구가 필요합니다.", { station: "log", tab: "system" });
   }

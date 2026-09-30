@@ -2,7 +2,8 @@
 
 학교 수업용 OpenAI API 사용량 관리 시스템. Synology DS918+ NAS(내부망)에서 LiteLLM Proxy를 돌려
 학생별 **가상 API 키**(예산·모델 제한 포함)를 발급하고, Firebase 구글 로그인 기반 관리 화면 **"AIAPI 관제 함교"** 로 관리한다.
-관리 화면은 3D 궤도 관제도 위에 8개 스테이션을 둔 우주선 제어판 형태이며, 교실 화면에 띄워 두는 **관제 모드**(자동 순환)를 지원한다.
+관리 화면은 3D 궤도 관제도 위에 9개 스테이션을 둔 우주선 제어판 형태이며, 교실 화면에 띄워 두는 **관제 모드**(자동 순환)를 지원한다.
+학생은 자기 구글 계정으로 로그인해 자기 키를 보고([학생 키 보기](#학생이-로그인해-자기-키-보기)), NAS 는 새 버전을 스스로 받아 다시 빌드한다([자동 업데이트](#자동-업데이트-nas)).
 
 ```
 학생 코드 (OpenAI SDK, base_url만 변경)
@@ -104,7 +105,96 @@ DSM 7.2 이상의 **Container Manager** 기준. DS918+ 등 x86 기종에서 동�
 7. **DSM 방화벽** — 방화벽을 켜 두었다면 제어판 → 보안 → 방화벽 규칙에 `LITELLM_PORT`(기본 4000)와 `ADMIN_UI_PORT`(3000) 허용을 더한다.
    litellm 은 학생 PC 의 실제 IP 를 기록하려고 NAS 네트워크에 직접 붙어 있어 방화벽 규칙을 따른다([학생 PC 의 실제 IP 기록](#학생-pc-의-실제-ip-기록)).
 8. **업데이트** — 저장소를 갱신(재업로드 또는 `git pull`)한 뒤 프로젝트 선택 → **동작 → 빌드**로 재빌드,
-   또는 SSH에서 `docker compose up -d --build`
+   또는 SSH에서 `docker compose up -d --build`. 이걸 NAS 가 알아서 하게 하려면 [자동 업데이트](#자동-업데이트-nas)
+
+## 자동 업데이트 (NAS)
+
+GitHub `main` 에 새 버전이 올라오면 NAS 가 **10분마다 스스로 확인해 가져오고 다시 빌드**한다.
+NAS 는 학교 내부망이라 GitHub 가 먼저 알려 줄 수 없어(웹훅), NAS 가 GitHub 에 묻는 방식이다.
+
+- 새 버전이 제대로 뜨지 않으면(컨테이너 건강 확인 실패) **이전 버전으로 스스로 되돌린다**
+- NAS 에서 저장소 파일을 직접 고쳐 두었으면 덮어쓰지 않고 멈춘다(포트 같은 값은 `.env` 에 둔다)
+- 결과는 관리 화면 **08 기록 → 시스템 상태 → 자동 업데이트 (NAS)** 줄에 보이고, 실패하면 개요 경보에도 뜬다.
+  자세한 기록은 `admin-ui/data/auto-update.log`
+- 보통은 관리 화면만 몇 초 다시 뜨고, 학생 API(LiteLLM)는 그 설정이 바뀔 때만 잠깐 다시 시작한다
+
+### 설정하기 (한 번만, 10분 정도)
+
+미리 File Station 에서 `docker/aiapi-manager` 폴더를 복사해 두거나 Hyper Backup 으로 백업해 두면 안심이다.
+
+**0단계. 이 기능이 든 버전을 한 번만 손으로 받는다**
+평소처럼 업데이트(ZIP 재업로드 또는 `git pull` → Container Manager **동작 → 빌드**)를 한 번 해서
+NAS 에 `scripts/nas-auto-update.sh` 와 `scripts/nas-auto-update-setup.sh` 가 생기게 한다. 이번이 마지막 손 업데이트다.
+
+**1단계. SSH 켜기**
+DSM **제어판 → 터미널 및 SNMP → 터미널** 탭에서 **SSH 서비스 활성화**를 체크하고(포트 22) **적용**.
+설정이 모두 끝나면 다시 꺼도 된다. 자동 업데이트는 SSH 없이 돈다.
+
+**2단계. Git Server 설치**
+**패키지 센터**에서 `Git Server` 를 찾아 **설치**한다. NAS 에 `git` 명령이 생기며, Git Server 자체 설정은 하지 않아도 된다.
+
+**3단계. NAS 에 접속해 준비 스크립트 실행**
+PC 에서 Windows 는 **PowerShell**, Mac 은 **터미널**을 열고:
+
+```sh
+ssh 관리자계정@NAS주소        # 예: ssh admin@192.168.0.10  → DSM 비밀번호 입력
+sudo bash /volume1/docker/aiapi-manager/scripts/nas-auto-update-setup.sh   # 비밀번호 한 번 더
+```
+
+설치 폴더가 다르면 경로를 바꾼다(File Station 에서 폴더 **속성 → 위치**). 스크립트가 git 을 확인하고
+`ssh-ed25519 AAAA… aiapi-nas-…` 로 시작하는 **배포 키 한 줄**을 보여 준 뒤 기다린다. 그 한 줄을 통째로 복사한다.
+
+**4단계. GitHub 에 배포 키 등록 (읽기 전용)**
+1. 브라우저에서 저장소(https://github.com/progh2/aiapi-manager) → 위쪽 **Settings** → 왼쪽 **Deploy keys** → **Add deploy key**
+2. **Title**: `학교 NAS` · **Key**: 3단계에서 복사한 한 줄
+3. **Allow write access 는 체크하지 않는다**(NAS 는 받기만 한다) → **Add key**
+4. NAS 화면으로 돌아와 **Enter** → `연결됨 ✓` → 저장소 설정 → 첫 확인 결과(`"status":"ok"` 또는 `"updated"`)가 나오면 성공.
+   학교 방화벽이 22번을 막으면 443번으로 알아서 다시 시도한다.
+   ZIP 으로 설치한 폴더면 `.env`·`admin-ui/data`·DB 는 그대로 둔 채 제자리에서 git 저장소로 바꾼다(기존 `docker-compose.yml` 은 `docker-compose.yml.before-git` 으로 남김)
+
+**5단계. 작업 스케줄러 등록**
+DSM **제어판 → 작업 스케줄러 → 생성 → 예약된 작업 → 사용자 정의 스크립트**
+
+| 탭 | 칸 | 값 |
+|---|---|---|
+| 일반 | 작업 | `aiapi 자동 업데이트` |
+| 일반 | 사용자 | `root` |
+| 일반 | 활성화 | 체크 |
+| 스케줄 | 다음 날짜에 실행 | 매일 |
+| 스케줄 | 첫 번째 실행 시간 | 00:00 |
+| 스케줄 | 빈도 | 10분마다 |
+| 스케줄 | 마지막 실행 시간 | 23:50 |
+| 작업 설정 | 사용자 정의 스크립트 | `bash /volume1/docker/aiapi-manager/scripts/nas-auto-update.sh` |
+| 작업 설정 | 알림(선택) | 이메일로 실행 세부 정보 보내기 → **스크립트가 비정상적으로 종료된 경우에만** (DSM 알림 메일을 설정해 둔 경우) |
+
+**확인**을 누르면 root 로 실행한다는 경고가 나온다 → **확인**. 목록에서 만든 작업을 고르고 **실행**을 한 번 눌러 본다.
+
+수업 중에는 적용을 미루고 싶으면 스크립트 칸을 이렇게 쓴다(서울 시각 0~7시, 17~23시에만 적용하고, 그 밖에는 확인만 하며 "적용 대기"로 보인다):
+
+```sh
+AIAPI_UPDATE_HOURS="0-7,17-23" bash /volume1/docker/aiapi-manager/scripts/nas-auto-update.sh
+```
+
+**6단계. 확인**
+관리 화면 **08 기록 → 시스템 상태 → 자동 업데이트 (NAS)** 줄이 `최신 (커밋) · 확인 N분 전` 이면 끝.
+새 버전이 오면 `방금 적용: …` 으로 바뀐다. 이제 SSH 는 꺼도 된다.
+
+### 문제 해결
+
+| 시스템 상태에 나오는 말 | 뜻과 할 일 |
+|---|---|
+| 설정 안 됨 | 작업이 아직 한 번도 돌지 않았다 → 5단계 작업을 **실행** |
+| 마지막 확인 … — 작업 스케줄러가 멈췄는지 확인하세요 | 작업이 꺼졌거나 NAS 가 재시작 중이었다 → 작업 스케줄러에서 **활성화** 확인 |
+| git 이 없습니다 | 2단계 Git Server 설치 |
+| GitHub 에서 가져오지 못했습니다 | 배포 키(4단계)·인터넷 연결 확인. 준비 스크립트를 다시 돌리면 연결을 시험해 준다 |
+| NAS 에서 고친 파일이 있어 멈췄습니다 | NAS 에서 `docker-compose.yml` 등을 직접 고쳤다 → 바꾼 값(포트 등)을 `.env` 로 옮기고 `sudo git -C /volume1/docker/aiapi-manager checkout -- .` |
+| NAS 쪽 기록이 GitHub 과 갈라졌습니다 | NAS 에서 커밋을 만들었다 → 필요한 변경을 챙긴 뒤 `sudo git -C /volume1/docker/aiapi-manager reset --hard origin/main` |
+| 이전 버전으로 되돌렸습니다 | 새 버전이 제대로 뜨지 않아 이전 버전이 돌고 있다(서비스는 정상). `admin-ui/data/auto-update.log` 를 개발 쪽에 알려 준다 |
+| 적용 시각이 아니라 기다립니다 | `AIAPI_UPDATE_HOURS` 설정대로 정상 |
+
+- **멈추기**: 작업 스케줄러에서 작업의 **활성화**를 끈다. 손 업데이트(설치 A의 8단계)는 그대로 된다
+- **완전히 끊기**: GitHub **Settings → Deploy keys** 에서 키를 지우면 NAS 는 더 이상 가져오지 못한다
+- 개발용 스크립트 시험: `bash scripts/nas-auto-update.test.sh`(가짜 GitHub·가짜 docker 로 적용·되돌림·대기·잠금 확인)
 
 ## 설치 B: 일반 PC / 서버
 

@@ -3,6 +3,7 @@
 // LITELLM_MASTER_KEY는 이 서버에만 존재하며 브라우저로 나가지 않는다.
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 // firebase-admin 14 에는 네임스페이스 API(admin.auth)가 없다. 모듈 API 를 쓴다.
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
@@ -42,6 +43,8 @@ const {
   // 학생이 로그인해 자기 키를 다시 볼 수 있게 발급한 키 원문을 암호화해 둔다.
   KEY_VAULT_PATH = path.join(__dirname, "data", "key-vault.json"),
   KEY_VAULT_SECRET = "",
+  // NAS 자동 업데이트(scripts/nas-auto-update.sh)가 남기는 결과. 시스템 상태에 보인다.
+  AUTO_UPDATE_STATUS_PATH = path.join(__dirname, "data", "auto-update.json"),
   // 학생에게 안내할 프록시 주소. 비우면 화면이 접속 주소와 LITELLM_PORT 로 만든다.
   PUBLIC_PROXY_URL = "",
   LITELLM_PORT = "4000",
@@ -860,8 +863,18 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
     })(),
     proxy_url: PUBLIC_PROXY_URL || null,
     proxy_port: Number(LITELLM_PORT) || 4000,
+    auto_update: readAutoUpdate(),
   });
 });
+
+function readAutoUpdate() {
+  try {
+    const s = JSON.parse(fs.readFileSync(AUTO_UPDATE_STATUS_PATH, "utf8"));
+    return s && typeof s === "object" ? s : null;
+  } catch {
+    return null;
+  }
+}
 
 app.get("/api/me", requireRegistered, (req, res) => {
   res.json({
