@@ -12,6 +12,8 @@ const isSystemKey = (k) => Boolean(k && k.metadata && k.metadata.aiapi_system);
 
 function money(n) {
   const v = Number(n) || 0;
+  // 1센트 미만은 $0.00 으로 뭉개지지 않게 유효 숫자 2자리까지 적는다(아주 싼 모델).
+  if (v > 0 && v < 0.01) return `$${v.toFixed(Math.min(8, 1 - Math.floor(Math.log10(v)))).replace(/0+$/, "")}`;
   return `$${v >= 100 ? v.toFixed(0) : v.toFixed(2)}`;
 }
 
@@ -190,6 +192,11 @@ function alerts({ keys = [], teams = [], providers = [], activity = [] }, now = 
   if (c.camp_today) add("info", `오늘 캠프 키 ${c.camp_today}개 사용 중`);
   const f = failureSummary(activity);
   if (f.total >= 10 && f.failed / f.total >= 0.3) add("warn", `최근 호출 실패율 ${pct(f.failed / f.total)}%`);
+  const unpriced = (activity || []).filter((it) => it.unpriced);
+  if (unpriced.length) {
+    const models = [...new Set(unpriced.map((it) => it.model).filter(Boolean))].slice(0, 3).join(", ");
+    add("warn", `가격 없는 모델 호출 ${unpriced.length}건(${models}) — 비용이 $0 으로 기록되어 예산이 줄지 않음. litellm 을 다시 시작하면 최신 가격표를 받음`);
+  }
   const order = { crit: 0, warn: 1, info: 2 };
   return out.sort((a, b) => order[a.level] - order[b.level]);
 }

@@ -11,7 +11,8 @@ const REASONS = [
   { code: "provider_budget", label: "공급자 키 한도 소진", re: /user=(provider|pool):\S*\s+over budget|(provider|pool):\S+.*budget/i },
   { code: "team_budget", label: "학급 예산 초과", re: /team.*(over budget|budget.*exceeded|exceeded.*budget)|budget.*team/i },
   { code: "budget", label: "예산 초과", re: /budget has been exceeded|exceededbudget|budget.*exceeded|over budget|max budget/i },
-  { code: "model_denied", label: "허용 안 된 모델", re: /not allowed to access model|model.*not allowed|허용 목록에 없습니다/i },
+  // 새 LiteLLM 은 ModelAccessDeniedProxyException + "The requested model '…' is not available for this API key" 로 남긴다.
+  { code: "model_denied", label: "허용 안 된 모델", re: /not allowed to access model|model.*not allowed|model.?access.?denied|not available for this api key|허용 목록에 없습니다/i },
   { code: "invalid_key", label: "잘못된 키", re: /invalid proxy server token|invalid api key passed|no api key passed|authentication error, invalid/i },
   { code: "rate_limit", label: "속도 제한(RPM/TPM)", re: /rate limit|ratelimit|crossed tpm|crossed rpm|max parallel request|too many requests|\b429\b/i },
   { code: "provider_quota", label: "공급자 요금 한도", re: /insufficient_quota|exceeded your current quota|billing/i },
@@ -96,13 +97,26 @@ function toActivity(row, { keysByToken = new Map(), teamsById = new Map() } = {}
     Object.assign(out, explainFailure(row));
     const msg = errorInfo(row).message;
     out.error = msg ? redact(msg) : null;
+  } else if (isUnpriced(row, out)) {
+    // 토큰은 썼는데 비용이 정확히 0: LiteLLM 가격표에 없는 모델이다. 예산이 줄지 않는다.
+    out.unpriced = true;
   }
   return out;
+}
+
+// 로컬 Ollama(무료)와 캐시 적중은 0원이 맞으므로 뺀다.
+function isUnpriced(row, out) {
+  if (!(out.tokens > 0) || out.spend !== 0) return false;
+  if (/ollama/i.test(String(out.provider || "")) || /^ollama/i.test(String(row.model || ""))) return false;
+  if (String(row.cache_hit || "").toLowerCase() === "true") return false;
+  return true;
 }
 
 function summarizeActivity(items) {
   const byReason = {};
   const aliases = new Set();
+  const unpricedModels = new Set();
+  let unpriced = 0;
   let ok = 0;
   let spend = 0;
   let tokens = 0;
@@ -112,6 +126,10 @@ function summarizeActivity(items) {
     tokens += Number(it.tokens) || 0;
     if (it.ok) ok += 1;
     else byReason[it.reason_code || "unknown"] = (byReason[it.reason_code || "unknown"] || 0) + 1;
+    if (it.unpriced) {
+      unpriced += 1;
+      if (it.model) unpricedModels.add(it.model);
+    }
   }
   const total = (items || []).length;
   return {
@@ -122,6 +140,8 @@ function summarizeActivity(items) {
     tokens,
     active_keys: aliases.size,
     by_reason: byReason,
+    unpriced,
+    unpriced_models: [...unpricedModels].slice(0, 5),
   };
 }
 

@@ -159,3 +159,11 @@ test("학생 도구는 자기 키만 보고 지금 쓸 수 있는지 알려 준�
   assert.match(guide.result.python, /gpt-4o-mini/);
   assert.ok(!USER_TOOLS.some((t) => t.kind === "propose"));
 });
+
+test("엘피 상황표: 1센트 미만 금액과 가격 없는 호출 경보", () => {
+  assert.equal(F.money(0.00035), "$0.00035");
+  assert.equal(F.money(0), "$0.00");
+  assert.equal(F.money(8.5), "$8.50");
+  const list = F.alerts({ activity: [{ ok: true, unpriced: true, model: "openai-a/gpt-6-luna" }, { ok: true, spend: 0.0003 }] }, NOW);
+  assert.ok(list.some((a) => /가격 없는 모델 호출 1건\(openai-a\/gpt-6-luna\)/.test(a.text)));
+});

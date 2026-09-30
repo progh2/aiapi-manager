@@ -10,12 +10,21 @@ export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
 
 export const icon = (name, cls = "") => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
+// 1센트 미만은 셋째 자리에서 반올림하면 $0.000 이 되어 비용이 안 잡힌 것처럼 보인다
+// (예: GPT-6 Luna 3천 토큰 ≈ $0.0003). 유효 숫자 2자리까지 적는다.
+export function tinyAmount(a) {
+  if (a < 1e-8) return "0.00000001";
+  const digits = Math.min(8, 1 - Math.floor(Math.log10(a)));
+  return a.toFixed(digits).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 export function money(v, { dash = "—" } = {}) {
   if (v == null || !Number.isFinite(Number(v))) return dash;
   const n = Number(v);
   const a = Math.abs(n);
+  if (a > 0 && a < 1e-8) return n < 0 ? "-<$0.00000001" : "<$0.00000001";
   const s = a >= 1000 ? a.toLocaleString("en-US", { maximumFractionDigits: 0 })
-    : a >= 100 ? a.toFixed(0) : a >= 1 ? a.toFixed(2) : a === 0 ? "0" : a.toFixed(3);
+    : a >= 100 ? a.toFixed(0) : a >= 1 ? a.toFixed(2) : a === 0 ? "0" : a >= 0.01 ? a.toFixed(3) : tinyAmount(a);
   return (n < 0 ? "-$" : "$") + s;
 }
 
