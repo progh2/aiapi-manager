@@ -104,7 +104,35 @@ DSM 7.2 이상의 **Container Manager** 기준. DS918+ 등 x86 기종에서 동�
 7. **DSM 방화벽** — 방화벽을 켜 두었다면 제어판 → 보안 → 방화벽 규칙에 `LITELLM_PORT`(기본 4000)와 `ADMIN_UI_PORT`(3000) 허용을 더한다.
    litellm 은 학생 PC 의 실제 IP 를 기록하려고 NAS 네트워크에 직접 붙어 있어 방화벽 규칙을 따른다([학생 PC 의 실제 IP 기록](#학생-pc-의-실제-ip-기록)).
 8. **업데이트** — 저장소를 갱신(재업로드 또는 `git pull`)한 뒤 프로젝트 선택 → **동작 → 빌드**로 재빌드,
-   또는 SSH에서 `docker compose up -d --build`
+   또는 SSH에서 `docker compose up -d --build`. 이걸 NAS 가 알아서 하게 하려면 [자동 업데이트](#자동-업데이트-nas)
+
+## 자동 업데이트 (NAS)
+
+GitHub `main` 에 새 버전이 올라오면 NAS 가 **10분마다 스스로 확인해 가져오고 다시 빌드**한다.
+NAS 는 학교 내부망이라 GitHub 가 알려 줄 수 없어(웹훅), NAS 가 먼저 묻는 방식이다.
+
+- 새 버전이 제대로 뜨지 않으면(컨테이너 건강 확인 실패) **이전 버전으로 되돌린다**
+- NAS 에서 저장소 파일을 고쳐 두었거나 기록이 갈라졌으면 건드리지 않고 멈춘다(포트 등은 `.env` 로)
+- 결과는 관리 화면 **08 기록 → 시스템 상태 → 자동 업데이트** 줄에 보이고, 실패하면 개요 경보에도 뜬다.
+  자세한 기록은 `admin-ui/data/auto-update.log`
+- 보통은 관리 화면만 몇 초 다시 뜨고, 학생 API(LiteLLM)는 설정이 바뀔 때만 다시 시작한다.
+  수업 중 적용을 피하려면 적용 시각을 정한다(`AIAPI_UPDATE_HOURS="0-7,17-23"`, 확인은 계속하고 적용만 미룸)
+
+**준비 (한 번만, 5분)**
+
+1. DSM **패키지 센터 → Git Server** 설치(git 명령이 생긴다). 제어판 → 터미널 및 SNMP 에서 SSH 켜기
+2. SSH 로 NAS 에 들어가 준비 스크립트를 실행한다
+   ```sh
+   sudo bash /volume1/docker/aiapi-manager/scripts/nas-auto-update-setup.sh
+   ```
+   읽기 전용 **배포 키**를 만들어 보여 준다 → GitHub 저장소 **Settings → Deploy keys → Add deploy key** 에 붙여 넣는다(쓰기 권한은 끈다).
+   연결을 시험하고(학교 방화벽이 22번을 막으면 443번으로), ZIP 으로 설치한 폴더면 `.env`·데이터는 그대로 둔 채 git 저장소로 바꾼 뒤 첫 확인을 한다
+3. DSM **제어판 → 작업 스케줄러 → 생성 → 예약된 작업 → 사용자 정의 스크립트**
+   - 사용자 `root`, 일정 매일 · 10분마다(00:00 ~ 23:50)
+   - 스크립트 `bash /volume1/docker/aiapi-manager/scripts/nas-auto-update.sh`
+   - "비정상 종료 시에만 실행 세부 정보를 이메일로 보내기"를 켜면 실패를 메일로 받는다
+
+스크립트 시험: `bash scripts/nas-auto-update.test.sh` (가짜 GitHub·가짜 docker 로 적용·되돌림·대기·잠금을 확인한다).
 
 ## 설치 B: 일반 PC / 서버
 

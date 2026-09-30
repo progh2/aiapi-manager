@@ -29,6 +29,21 @@ const DETAIL_LABEL = {
   purpose: "방법", by: "누가", accounts_created: "계정 등록", accounts_linked: "계정 연결",
 };
 
+// NAS 자동 업데이트(scripts/nas-auto-update.sh) 상태 줄
+function autoUpdateRow(au, light) {
+  const label = "자동 업데이트 (NAS)";
+  if (!au) return light(null, label, "설정 안 됨 — README '자동 업데이트' 참고");
+  const checked = au.checked_at ? relTime(au.checked_at) : "알 수 없음";
+  if (au.checked_at && Date.now() - new Date(au.checked_at).getTime() > 90 * 60000) {
+    return light(null, label, `마지막 확인 ${checked} — 작업 스케줄러가 멈췄는지 확인하세요`);
+  }
+  const applied = au.applied_at ? ` · 마지막 적용 ${fmtDateTime(au.applied_at)}` : "";
+  if (au.status === "error" || au.status === "rolled_back") return light(false, label, `${au.message}`);
+  if (au.status === "waiting" || au.status === "dry_run") return light(null, label, `${au.message} · 확인 ${checked}`);
+  if (au.status === "updated") return light(true, label, `방금 적용: ${au.subject || au.commit}${applied}`);
+  return light(true, label, `최신 (${au.commit || "?"}) · 확인 ${checked}${applied}`);
+}
+
 const VALUE_LABEL = { view: "보기", copy: "복사", student: "학생", admin: "관리자" };
 
 function detailText(d) {
@@ -196,6 +211,7 @@ export default {
           ${light(s.stores.providers.ok, "공급자 키 (provider-keys.json)", s.stores.providers.ok ? `${num(s.stores.providers.count)}개` : "손상")}
           ${light(true, "작업 기록 (audit.jsonl)", `${num(s.stores.audit.count)}건`)}
           ${light(true, "관리 화면 (admin-ui)", `v${s.version} · 가동 ${Math.floor(s.uptime_s / 3600)}시간 ${Math.floor((s.uptime_s % 3600) / 60)}분`)}
+          ${autoUpdateRow(s.auto_update, light)}
         </div></section>
       <section class="panel"><div class="panel-h"><span class="code">PORTS</span><h2>포트와 화면</h2></div>
         <dl class="kv" style="font-size:13px">
