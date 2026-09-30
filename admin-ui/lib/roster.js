@@ -1,6 +1,7 @@
 // 학급 명단 파서 + LiteLLM duration 변환.
 // 서버(require)와 브라우저(<script src="/roster.js">)에서 같이 쓴다.
 // CLI `name,student_id` 와 UI `학번,이름` 둘 다 받는다.
+// 이메일 칸(`학번,이름,이메일`)이 있으면 학생 계정을 함께 등록해, 학생이 그 구글 계정으로 로그인해 자기 키를 본다.
 
 const NAME_HEADERS = new Set([
   "name", "이름", "성명", "학생", "학생이름", "student_name", "studentname",
@@ -8,6 +9,10 @@ const NAME_HEADERS = new Set([
 const ID_HEADERS = new Set([
   "student_id", "studentid", "학번", "id", "번호", "sid",
 ]);
+const EMAIL_HEADERS = new Set([
+  "email", "e_mail", "mail", "이메일", "메일", "구글", "구글계정", "구글_계정", "google", "gmail", "계정", "account",
+]);
+const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 
 function aliasFor(studentId, name) {
   const id = String(studentId || "").trim();
@@ -40,18 +45,35 @@ function headerRoles(cells) {
   const norms = cells.map(normalizeHeader);
   const nameIdx = norms.findIndex((h) => NAME_HEADERS.has(h));
   const idIdx = norms.findIndex((h) => ID_HEADERS.has(h));
-  if (nameIdx >= 0 && idIdx >= 0) return { nameIdx, idIdx };
+  const emailIdx = norms.findIndex((h) => EMAIL_HEADERS.has(h));
+  if (nameIdx >= 0 && idIdx >= 0) return { nameIdx, idIdx, emailIdx };
   return null;
 }
 
-function rowFromCells(cells, roles, line) {
-  const raw = cells.join(",");
-  if (!cells.length) return { error: { line, raw, error: "빈 줄" } };
+function rowFromCells(allCells, roles, line) {
+  const raw = allCells.join(",");
+  if (!allCells.length) return { error: { line, raw, error: "빈 줄" } };
+  let cells = allCells;
+  let email = "";
+  if (roles && roles.emailIdx >= 0) {
+    email = cells[roles.emailIdx] || "";
+  } else if (!roles) {
+    // 헤더가 없으면 @ 가 든 칸을 이메일로 보고 나머지로 학번·이름을 찾는다.
+    const at = cells.findIndex((c) => c.includes("@"));
+    if (at >= 0) {
+      email = cells[at];
+      cells = cells.filter((_, i) => i !== at);
+    }
+  }
+  email = String(email || "").trim().toLowerCase();
+  if (email && !EMAIL_RE.test(email)) return { error: { line, raw, error: `이메일 형식이 올바르지 않습니다: ${email}` } };
   let student_id = "";
   let name = "";
   if (roles) {
     student_id = cells[roles.idIdx] || "";
     name = cells[roles.nameIdx] || "";
+  } else if (!cells.length) {
+    return { error: { line, raw, error: "학번 또는 이름이 필요합니다" } };
   } else if (cells.length === 1) {
     const only = cells[0];
     if (only.includes("-")) {
@@ -84,6 +106,7 @@ function rowFromCells(cells, roles, line) {
       student_id: student_id || null,
       name: name || null,
       alias: aliasFor(student_id, name),
+      ...(email ? { email } : {}),
     },
   };
 }
@@ -138,11 +161,17 @@ function normalizeStudentList(students) {
       errors.push({ line, error: "학생 항목이 올바르지 않습니다" });
       return;
     }
+    const email = s.email != null ? String(s.email).trim().toLowerCase() : "";
+    if (email && !EMAIL_RE.test(email)) {
+      errors.push({ line, error: `이메일 형식이 올바르지 않습니다: ${email}` });
+      return;
+    }
     if (s.alias && String(s.alias).trim()) {
       out.push({
         alias: String(s.alias).trim(),
         student_id: s.student_id != null ? String(s.student_id).trim() || null : null,
         name: s.name != null ? String(s.name).trim() || null : null,
+        ...(email ? { email } : {}),
       });
       return;
     }
@@ -152,7 +181,7 @@ function normalizeStudentList(students) {
       errors.push({ line, error: "alias 또는 학번/이름이 필요합니다" });
       return;
     }
-    out.push({ student_id: id || null, name: name || null, alias: aliasFor(id, name) });
+    out.push({ student_id: id || null, name: name || null, alias: aliasFor(id, name), ...(email ? { email } : {}) });
   });
   return { students: out, errors };
 }
@@ -182,6 +211,7 @@ function durationFromExpiryDate(dateStr, now = new Date()) {
 const Roster = {
   NAME_HEADERS,
   ID_HEADERS,
+  EMAIL_HEADERS,
   aliasFor,
   normalizeHeader,
   parseRoster,

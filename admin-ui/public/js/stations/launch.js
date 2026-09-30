@@ -8,7 +8,7 @@ const TABS = [["bulk", "CLASS", "학급 일괄"], ["camp", "CAMP", "캠프 짧�
 
 function printHandouts(cards, { title, proxyUrl }) {
   const root = $("#print-root");
-  root.innerHTML = `<div class="p-sheet"><h1>${esc(title)}</h1><p>접속 주소 <b>${esc(proxyUrl)}</b> · 키는 다른 사람과 나누지 마세요. 잃어버리면 선생님께 새 키를 받으세요.</p>
+  root.innerHTML = `<div class="p-sheet"><h1>${esc(title)}</h1><p>접속 주소 <b>${esc(proxyUrl)}</b> · 키는 다른 사람과 나누지 마세요. 키를 잃어버리면 <b>${esc(location.origin)}</b> 에 학교 구글 계정으로 로그인해 다시 볼 수 있어요(선생님이 계정을 등록한 경우).</p>
     <div class="p-cards">${cards.map((c) => `<div class="p-card"><div class="nm">${esc(c.name)}</div>
       <div>API 키</div><div class="key">${esc(c.key)}</div>
       <div>모델 <b>${esc(c.model)}</b>${c.expires ? ` · 만료 ${esc(c.expires)}` : ""}${c.budget != null ? ` · 예산 ${esc(money(c.budget))}` : ""}</div>
@@ -101,8 +101,9 @@ export default {
         </section>
         <section class="panel">
           <div class="panel-h"><span class="code">MANIFEST</span><h2>명단</h2><span class="end"><label class="btn xs" style="cursor:pointer">${icon("down")}CSV 불러오기<input id="lb-file" type="file" accept=".csv,text/csv,text/plain,.txt" hidden></label></span></div>
-          <p class="help">한 줄에 <code>학번,이름</code> (쉼표·탭·공백). 헤더 <code>학번,이름</code> 과 <code>name,student_id</code> 모두 됩니다.</p>
-          <textarea id="lb-roster" rows="9" spellcheck="false" autocomplete="off" placeholder="학번,이름&#10;20261001,홍길동&#10;20261002,김철수"></textarea>
+          <p class="help">한 줄에 <code>학번,이름,이메일</code> (쉼표·탭·공백). 헤더 <code>학번,이름</code> 과 <code>name,student_id</code> 도 됩니다.
+            <b>이메일(학생 구글 계정)</b>을 넣으면 학생 계정도 함께 등록되어, 학생은 그 계정으로 로그인해 <b>자기 키를 직접 보고 복사</b>합니다. 키를 하나하나 나눠 줄 필요가 없어요.</p>
+          <textarea id="lb-roster" rows="9" spellcheck="false" autocomplete="off" placeholder="학번,이름,이메일&#10;20261001,홍길동,hong@school.kr&#10;20261002,김철수,kim@school.kr"></textarea>
           <div id="lb-preview" style="margin-top:10px"></div>
           <div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="lb-go">${icon("launch")}일괄 발급</button><span class="muted" style="font-size:12px">이미 있는 별칭은 실패로 남기고 나머지는 계속 발급합니다.</span></div>
         </section>
@@ -132,12 +133,13 @@ export default {
           <span class="tag">인당 ${esc(money(Number(pane.querySelector("#lb-budget").value) || 0))}</span>
           <span class="tag">${esc(exp ? `${exp} 하루 끝` : dur || "무기한")}</span>
           ${dup ? `<span class="tag warn">이미 있는 별칭 ${dup}</span>` : ""}
+          ${students.some((s) => s.email) ? `<span class="tag good">로그인 계정 ${students.filter((s) => s.email).length}명</span>` : '<span class="tag">이메일 없음 — 학생 로그인 없이 발급만</span>'}
           ${errors.length ? `<span class="tag crit">해석 실패 ${errors.length}줄</span>` : ""}
           ${exp && dur ? '<span class="tag warn">만료일이 있으면 상대 만료는 무시</span>' : ""}
         </div>
-        <div class="tbl-wrap" style="max-height:220px"><table class="tbl"><thead><tr><th>#</th><th>별칭</th><th>학번</th><th>이름</th></tr></thead><tbody>
-          ${students.slice(0, 60).map((s, i) => `<tr class="${existing.has(s.alias) ? "bad" : ""}"><td class="num muted">${i + 1}</td><td>${esc(s.alias)}${existing.has(s.alias) ? ' <span class="tag warn">있음</span>' : ""}</td><td class="num">${esc(s.student_id || "")}</td><td>${esc(s.name || "")}</td></tr>`).join("")}
-          ${errors.slice(0, 10).map((e) => `<tr class="bad"><td class="num muted">${esc(e.line ?? "")}</td><td colspan="3"><span class="tag crit">해석 실패</span> ${esc(e.raw || "")} — ${esc(e.error || "")}</td></tr>`).join("")}
+        <div class="tbl-wrap" style="max-height:220px"><table class="tbl"><thead><tr><th>#</th><th>별칭</th><th>학번</th><th>이름</th><th>이메일(로그인 계정)</th></tr></thead><tbody>
+          ${students.slice(0, 60).map((s, i) => `<tr class="${existing.has(s.alias) ? "bad" : ""}"><td class="num muted">${i + 1}</td><td>${esc(s.alias)}${existing.has(s.alias) ? ' <span class="tag warn">있음</span>' : ""}</td><td class="num">${esc(s.student_id || "")}</td><td>${esc(s.name || "")}</td><td class="sec" style="font-size:12px">${s.email ? esc(s.email) : '<span class="muted">없음 — 학생이 로그인해 볼 수 없음</span>'}</td></tr>`).join("")}
+          ${errors.slice(0, 10).map((e) => `<tr class="bad"><td class="num muted">${esc(e.line ?? "")}</td><td colspan="4"><span class="tag crit">해석 실패</span> ${esc(e.raw || "")} — ${esc(e.error || "")}</td></tr>`).join("")}
         </tbody></table></div>
         ${students.length > 60 ? `<p class="muted" style="font-size:12px;margin:6px 0 0">처음 60명만 표시</p>` : ""}`;
     };
@@ -193,19 +195,27 @@ export default {
     const bad = rows.filter((r) => r.error);
     const model = (out.models || [])[0] || "gpt-4o-mini";
     const proxy = this.ctx.proxyUrl();
-    toast(`${okRows.length}명 발급${bad.length ? ` · 실패 ${bad.length}` : ""}`, { tone: bad.length ? "warn" : "good", title: "학급 일괄 발급" });
+    const acc = out.accounts || { created: 0, linked: 0, unchanged: 0, failed: 0 };
+    const accountTag = (r) => {
+      if (!r.email) return '<span class="muted">—</span>';
+      const label = { created: '<span class="tag good">계정 등록</span>', linked: '<span class="tag info">키 연결</span>', unchanged: '<span class="tag">이미 연결</span>', admin: '<span class="tag">관리자</span>', error: `<span class="tag crit" title="${esc(r.account_error || "")}">등록 실패</span>` }[r.account] || "";
+      return `${label} ${esc(r.email)}`;
+    };
+    toast(`${okRows.length}명 발급${bad.length ? ` · 실패 ${bad.length}` : ""}${acc.created + acc.linked ? ` · 학생 계정 ${acc.created + acc.linked}명 연결` : ""}`, { tone: bad.length ? "warn" : "good", title: "학급 일괄 발급" });
     const box = $("#lb-result");
     box.innerHTML = `<section class="panel">
       <div class="panel-h"><span class="code">LAUNCH REPORT</span><h2>발급 결과</h2>
         <span class="end"><span class="tag good">성공 ${okRows.length}</span>${bad.length ? `<span class="tag crit">실패 ${bad.length}</span>` : ""}${out.team_created ? '<span class="tag info">학급 새로 만듦</span>' : ""}</span></div>
-      <div class="callout warn">키는 <b>지금만</b> 볼 수 있습니다. 이 화면을 벗어나기 전에 CSV 를 받거나 안내문을 인쇄하세요.</div>
+      ${acc.created || acc.linked || acc.unchanged
+    ? `<div class="callout">이메일을 넣은 학생 <b>${acc.created + acc.linked + acc.unchanged}명</b>은 이 관리 화면 주소(<code>${esc(location.origin)}</code>)에 그 구글 계정으로 로그인하면 <b>자기 키를 보고 복사</b>할 수 있습니다. 계정 새로 등록 ${acc.created} · 키 연결 ${acc.linked}${acc.failed ? ` · <span style="color:#ffc9c9">계정 등록 실패 ${acc.failed}</span>` : ""}</div>`
+    : `<div class="callout warn">이메일이 없어 학생이 로그인해 키를 볼 수 없습니다. CSV 를 받거나 안내문을 인쇄해 나눠 주세요. (명단에 이메일 칸을 넣으면 학생이 직접 봅니다)</div>`}
       <div class="row" style="margin-bottom:10px">
         <button class="btn primary sm" type="button" id="lr-csv" ${okRows.length ? "" : "disabled"}>${icon("down")}키 CSV 받기</button>
         <button class="btn sm" type="button" id="lr-print" ${okRows.length ? "" : "disabled"}>${icon("print")}학생 안내문 인쇄</button>
         <span class="muted" style="font-size:12px">인당 ${out.max_budget != null ? money(out.max_budget) : "—"} · ${esc(out.expires || out.duration || "무기한")} · 모델 ${esc((out.models || []).join(", "))}</span>
       </div>
-      <div class="tbl-wrap" style="max-height:340px"><table class="tbl"><thead><tr><th>상태</th><th>별칭</th><th>학번</th><th>이름</th><th>키 / 오류</th></tr></thead><tbody>
-      ${rows.map((r) => `<tr class="${r.key ? "ok" : "bad"}"><td>${r.key ? '<span class="tag good">성공</span>' : '<span class="tag crit">실패</span>'}</td><td>${esc(r.alias)}</td><td class="num">${esc(r.student_id || "")}</td><td>${esc(r.name || "")}</td><td>${r.key ? `<code>${esc(r.key)}</code>` : `<span style="color:#ffc9c9">${esc(r.error)}</span>`}</td></tr>`).join("")}
+      <div class="tbl-wrap" style="max-height:340px"><table class="tbl"><thead><tr><th>상태</th><th>별칭</th><th>학번</th><th>이름</th><th>로그인 계정</th><th>키 / 오류</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr class="${r.key ? "ok" : "bad"}"><td>${r.key ? '<span class="tag good">성공</span>' : r.skipped ? '<span class="tag warn">이미 있음</span>' : '<span class="tag crit">실패</span>'}</td><td>${esc(r.alias)}</td><td class="num">${esc(r.student_id || "")}</td><td>${esc(r.name || "")}</td><td style="font-size:12px">${accountTag(r)}</td><td>${r.key ? `<code>${esc(r.key)}</code>` : `<span style="color:#ffc9c9">${esc(r.error)}</span>`}</td></tr>`).join("")}
       </tbody></table></div></section>`;
     box.querySelector("#lr-csv").onclick = () => downloadText(`issued_keys_${todayYmd()}.csv`, toCsv(["alias", "student_id", "name", "api_key", "base_url", "model"], okRows.map((r) => [r.alias, r.student_id || "", r.name || "", r.key, proxy, model])));
     box.querySelector("#lr-print").onclick = () => printHandouts(okRows.map((r) => ({ name: r.name ? `${r.name} (${r.student_id || r.alias})` : r.alias, key: r.key, model, budget: out.max_budget, expires: out.expires || "" })), { title: `${out.team_alias || "학급"} AI API 키 안내`, proxyUrl: proxy });

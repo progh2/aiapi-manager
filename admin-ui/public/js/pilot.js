@@ -7,6 +7,7 @@ import { dailyBarChart, rankBarChart } from "../charts.js";
 import { toast, toastError } from "./lib/ui.js";
 import { say } from "./lib/holo.js";
 import { createElfy } from "./lib/assistant.js";
+import { mountSecret } from "./lib/secret.js";
 
 export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}, saveSettings = () => {} }) {
   const root = $("#pilot");
@@ -29,7 +30,8 @@ export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}
           <section class="panel"><div class="panel-h"><span class="code">ACCESS</span><h2>접속 안내</h2></div>
             <dl class="kv" style="font-size:13px"><dt>base_url</dt><dd><code>${esc(proxyUrl)}</code></dd><dt>model</dt><dd id="pl-model">—</dd></dl>
             <div class="snippet" style="margin-top:10px"><pre id="pl-snippet"></pre><button class="btn xs" type="button" id="pl-copy">${icon("copy")}복사</button></div>
-            <p class="help" style="margin:8px 0 0">키 문자열은 이 화면에 나오지 않습니다. 받은 키를 <code>api_key</code> 자리에 넣으세요.</p>
+            <div class="row" style="margin-top:8px"><button class="btn sm primary" type="button" id="pl-copy-mine" hidden>${icon("copy")}내 키 넣어 코드 복사</button>
+              <p class="help" id="pl-key-help" style="margin:0;flex:1">내 키는 아래 <b>내 키</b> 카드에서 마우스를 올리면 보이고, 복사 버튼으로 복사해요.</p></div>
           </section>
         </div>
         <h3 style="margin:18px 0 10px;font-size:14px" class="sec">내 키</h3>
@@ -48,6 +50,14 @@ export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}
     <footer class="foot" id="pl-foot"><span class="lbl">AIAPI · COCKPIT</span><span class="muted" style="font-size:12px;flex:1">문제가 계속되면 선생님께 이 화면의 실패 이유를 알려 주세요.</span></footer>`;
 
   $("#pl-logout").onclick = () => auth.signOut().finally(() => location.reload());
+  // 내 키 원문은 누를 때만 서버에서 받는다(선생님 작업 기록에 남는다). 이 페이지 메모리에만 둔다.
+  const secrets = new Map();
+  const revealMine = async (alias, purpose) => {
+    if (secrets.has(alias)) return secrets.get(alias);
+    const out = await api("/api/my/keys/reveal", { method: "POST", body: { alias, purpose } });
+    secrets.set(alias, out.key);
+    return out.key;
+  };
   const tickClock = () => {
     const p = seoulParts();
     $("#pl-clock").textContent = `${String(p.hh).padStart(2, "0")}:${String(p.mm).padStart(2, "0")}:${String(p.ss).padStart(2, "0")}`;
@@ -67,6 +77,7 @@ export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}
       const left = k.max_budget == null ? null : Math.max(0, k.max_budget - (k.spend || 0));
       return `<article class="card">
         <div class="card-h"><div class="ttl">${esc(k.key_alias)}<small>${esc(k.team_alias || "학급 없음")}</small></div><div class="end">${stateTag(st)}</div></div>
+        <div><div class="keybox-lbl">${icon("keys")}API 키</div><div class="pl-secret" data-alias="${esc(k.key_alias)}"></div></div>
         ${meterHtml(k.spend, k.max_budget)}
         <dl class="kv" style="font-size:12px">
           <dt>남은 예산</dt><dd class="num">${left == null ? "무제한" : money(left)}</dd>
@@ -78,6 +89,14 @@ export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}
         </dl>
       </article>`;
     }).join("") || '<div class="panel" style="grid-column:1/-1"><p class="muted" style="margin:0">아직 연결된 키가 없습니다. 선생님께 키 연결을 요청하세요.</p></div>';
+    for (const box of root.querySelectorAll(".pl-secret")) {
+      const k = keys.find((x) => x.key_alias === box.dataset.alias);
+      if (k && k.secret_available) {
+        mountSecret(box, { hint: k.key_hint, fetchSecret: (purpose) => revealMine(k.key_alias, purpose) });
+      } else {
+        box.innerHTML = '<div class="keybox off">선생님이 이 기능 전에 만든 키라 여기서 볼 수 없어요. 선생님께 <b>새 키로 교체</b>를 부탁하세요.</div>';
+      }
+    }
     const leftSum = keys.reduce((acc, k) => acc + (k.max_budget == null ? 0 : Math.max(0, k.max_budget - (k.spend || 0))), 0);
     const unlimited = keys.some((k) => k.max_budget == null);
     const usable = keys.filter((k) => ["active", "warn"].includes(keyState(k, now).code) && scheduleAllows(k.schedule || [])).length;
@@ -90,6 +109,20 @@ export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}
     const code = snippetPython(proxyUrl, model);
     $("#pl-snippet").textContent = code;
     $("#pl-copy").onclick = async () => toast((await copyText(code)) ? "예제 코드를 복사했습니다" : "복사하지 못했습니다", { tone: "good" });
+    // 쓸 수 있는 키 하나를 골라, 그 키가 들어간 예제 코드를 복사한다(화면에는 키를 띄우지 않는다).
+    const mine = keys.find((k) => k.secret_available && ["active", "warn"].includes(keyState(k, now).code)) || keys.find((k) => k.secret_available);
+    const copyMine = $("#pl-copy-mine");
+    copyMine.hidden = !mine;
+    if (mine) {
+      copyMine.title = `${mine.key_alias} 키가 들어간 코드를 복사합니다`;
+      copyMine.onclick = async () => {
+        try {
+          const secret = await revealMine(mine.key_alias, "copy");
+          const ok = await copyText(snippetPython(proxyUrl, (mine.models || [])[0] || model, secret));
+          toast(ok ? "내 키가 들어간 코드를 복사했어요. 이 코드를 친구에게 보내지 마세요." : "복사하지 못했습니다", { tone: ok ? "good" : "warn" });
+        } catch (e) { toastError(e, "키를 받지 못했습니다"); }
+      };
+    }
     if (scene) {
       const teamIds = [...new Set(keys.map((k) => k.team_id).filter(Boolean))];
       scene.setData({

@@ -149,6 +149,7 @@ async function assignClassBudgets(body, { litellm }) {
         alias: slot.alias,
         student_id: s.student_id,
         name: s.name,
+        email: s.email || null,
         error: slot.error,
         skipped: Boolean(slot.skipped),
       });
@@ -164,6 +165,7 @@ async function assignClassBudgets(body, { litellm }) {
         alias: s.alias,
         student_id: s.student_id,
         name: s.name,
+        email: s.email || null,
         key: data.key,
         max_budget: data.max_budget ?? params.max_budget ?? null,
         duration: params.duration || null,
@@ -175,6 +177,7 @@ async function assignClassBudgets(body, { litellm }) {
         alias: s.alias,
         student_id: s.student_id,
         name: s.name,
+        email: s.email || null,
         error: e.message,
       });
     }

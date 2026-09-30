@@ -671,3 +671,21 @@ body.reduce-motion .holo-fig img { animation: none; }
 }
 .chip.on { border-color: var(--hud); background: rgba(95, 220, 255, 0.16); color: var(--text-primary); box-shadow: 0 0 10px rgba(95, 220, 255, 0.18); }
 .chip.on::before { content: "✓"; color: var(--hud); font-weight: 700; }
+
+/* ---------------------------------------------------------------- 가려진 API 키 */
+.keybox {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 8px; align-items: center;
+  padding: 8px 10px; border: 1px dashed rgba(250, 178, 25, 0.45); border-radius: 6px; background: rgba(2, 8, 17, 0.62);
+}
+.keybox .k-val {
+  font: 600 13px/1.45 var(--font-mono); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: help; user-select: none; border-radius: 3px; padding: 1px 2px; transition: color 0.2s, text-shadow 0.2s, opacity 0.2s;
+}
+.keybox .k-val:focus-visible { outline: 2px solid var(--hud); outline-offset: 2px; }
+.keybox .k-val.shown { color: #fff3cf; user-select: all; white-space: normal; word-break: break-all; text-shadow: 0 0 10px rgba(250, 178, 25, 0.35); }
+.keybox .k-val.loading { opacity: 0.55; }
+.keybox .icon-btn { width: 30px; height: 30px; }
+.keybox .icon-btn svg { width: 16px; height: 16px; }
+.keybox .k-note { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); }
+.keybox.off { display: block; border-style: solid; border-color: var(--line); font-size: 12px; color: var(--text-secondary); line-height: 1.55; }
+.keybox-lbl { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
