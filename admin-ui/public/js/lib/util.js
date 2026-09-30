@@ -202,6 +202,10 @@ export function isExpiringSoon(k, days = 7, now = Date.now()) {
 
 export const isCamp = (k) => Boolean(k && k.metadata && k.metadata.aiapi_camp);
 export const isLocked = (k) => Boolean(k && k.metadata && k.metadata.aiapi_lockdown);
+// 도커 네트워크의 게이트웨이(172.16~31.x.0.1). 브리지 네트워크에서 포트를 공개하면 시놀로지 도커가
+// 연결을 대신 넘겨 모든 호출이 이 주소로 찍힌다. 학생 PC 의 실제 IP 가 아니다.
+export const isDockerGatewayIp = (ip) => /^172\.(1[6-9]|2\d|3[01])\.0\.1$/.test(String(ip || "").trim());
+
 export const isRetired = (k) => /-폐기(-\d+)?$/.test(String((k && k.key_alias) || ""));
 // AI 엘피 "프록시 방식"이 쓰는 비서 전용 키. 학생 키 개수·3D 에서 뺀다.
 export const isSystemKey = (k) => Boolean(k && k.metadata && k.metadata.aiapi_system);

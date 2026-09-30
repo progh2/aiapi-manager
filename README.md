@@ -99,9 +99,11 @@ DSM 7.2 이상의 **Container Manager** 기준. DS918+ 등 x86 기종에서 동�
    - 관리자 UI: `http://NAS내부IP:3000` → Google 로그인 → 키 발급 테스트
    - 프록시: `http://NAS내부IP:4000/health/liveliness` 가 응답하면 정상
    - 관리자 UI 헬스: `http://NAS내부IP:3000/health` → `{"status":"ok"}`
-6. **포트가 겹칠 때** — NMS/PartDB 등 기존 컨테이너가 3000/4000을 쓰고 있다면
-   `docker-compose.yml`의 `ports`에서 왼쪽 숫자만 바꾼다 (예: `"14000:4000"`).
-7. **업데이트** — 저장소를 갱신(재업로드 또는 `git pull`)한 뒤 프로젝트 선택 → **동작 → 빌드**로 재빌드,
+6. **포트가 겹칠 때** — NMS/PartDB 등 기존 서비스가 3000/4000을 쓰고 있다면 `.env` 의
+   `LITELLM_PORT`·`ADMIN_UI_PORT`(DB 는 `POSTGRES_HOST_PORT`, NAS 안에서만 열림)를 바꾼다.
+7. **DSM 방화벽** — 방화벽을 켜 두었다면 제어판 → 보안 → 방화벽 규칙에 `LITELLM_PORT`(기본 4000)와 `ADMIN_UI_PORT`(3000) 허용을 더한다.
+   litellm 은 학생 PC 의 실제 IP 를 기록하려고 NAS 네트워크에 직접 붙어 있어 방화벽 규칙을 따른다([학생 PC 의 실제 IP 기록](#학생-pc-의-실제-ip-기록)).
+8. **업데이트** — 저장소를 갱신(재업로드 또는 `git pull`)한 뒤 프로젝트 선택 → **동작 → 빌드**로 재빌드,
    또는 SSH에서 `docker compose up -d --build`
 
 ## 설치 B: 일반 PC / 서버
@@ -117,6 +119,8 @@ docker compose up -d --build
 ```
 
 - 관리자 UI: `http://localhost:3000`, 프록시: `http://localhost:4000`
+- **Docker Desktop(Windows·Mac)** 은 호스트 네트워크가 기본으로 꺼져 있다. 브리지 덧붙이기 파일로 띄운다
+  (호출 IP 는 도커 주소로 기록된다): `docker compose -f docker-compose.yml -f docker-compose.bridge.yml up -d --build`
 - 학생들이 접속해야 한다면 PC의 내부 IP(예: `http://192.168.0.20:4000`)를 안내하고,
   그 주소를 Firebase 승인된 도메인에도 추가한다. PC가 꺼지면 서비스도 꺼지므로 상시 운영은 NAS 쪽을 권장.
 - 중지: `docker compose down` / 로그 확인: `docker compose logs -f litellm`
@@ -294,6 +298,20 @@ ollama pull qwen3:8b        # 또는 gemma4, qwen3:30b 등
 - 상단 스피커 버튼이나 `M` 으로 끄고, 음량은 설정이나 09 화면에서 바꾼다. 브라우저는 처음 한 번 누르기 전에는 소리를 막는다
 - 스테이션을 바꾸면 3D 회전 전환에 더해 패널이 차례로 켜지고, 스캔 빛줄기가 지나가고, 화면 이름이 잠깐 흔들린다. 창은 홀로그램처럼 가로줄에서 펼쳐진다. **움직임 줄이기**를 켜면 모두 멈춘다
 - 엘피 목소리(한국어 TTS)는 09 화면에서 켠다. 말로 묻기(마이크)는 https 나 localhost 에서만 된다
+
+## 학생 PC 의 실제 IP 기록
+
+기록 → 실시간 호출의 **IP** 칸은 LiteLLM 이 받은 연결의 보낸 주소다.
+
+- litellm 컨테이너는 **NAS 네트워크에 직접 붙는다**(`network_mode: host`). 도커 브리지에서 포트를 공개하면
+  시놀로지 도커가 연결을 대신 넘겨 모든 호출이 도커 게이트웨이(`172.x.0.1`)로 찍히기 때문이다.
+  학생 주소는 그대로 `http://NAS:4000` 이다.
+- DB 는 NAS 자신(`127.0.0.1:15432`)에만 열리고, 관리 화면은 `host.docker.internal` 로 litellm 을 부른다.
+- 예전 기록이나 브리지로 띄운 곳의 `172.x.0.1` 은 화면에 **도커 내부**로 표시된다(학생 PC 의 IP 가 아님).
+- DSM 역방향 프록시 같은 것을 LiteLLM 앞에 두면 IP 가 그 프록시(`127.0.0.1`)로 찍힌다. 그때는 프록시가
+  `X-Forwarded-For` 를 실제 주소로 넘기게 하고 `litellm/config.yaml` 의 `general_settings` 에 `use_x_forwarded_for: true` 를 더한다
+  (프록시 없이 켜면 학생이 헤더로 IP 를 속일 수 있다).
+- 키가 학생마다 따로라 "누가 불렀는지"는 IP 없이도 정확하다. IP 는 키를 나눠 쓰는지, 시험 중 어느 자리 PC 에서 불렀는지 볼 때 쓴다.
 
 ## 4000번 포트(LiteLLM) 페이지는 무엇인가
 
@@ -483,7 +501,7 @@ NAS/PC에서 키·조 UI까지 재확인하는 순서는 [docs/nas-pc-recheck.md
 ## 보안 메모
 
 - 실제 OpenAI 키와 마스터 키는 `.env`에만 존재하며 git에 커밋하지 않는다 (`.gitignore` 처리됨).
-- Postgres는 외부 포트를 열지 않고 도커 내부 네트워크로만 접근한다.
+- Postgres는 NAS 자신(`127.0.0.1`)에만 포트를 연다. 학교 망에서는 닿지 않는다. litellm 은 호스트 네트워크에서 이 포트로 붙는다.
 - admin-ui는 Firebase ID 토큰을 서버에서 검증한다. `ADMIN_EMAILS`는 관리자이고, 그 외는 `admin-ui/data/users.json`에 등록된 구글 계정만 로그인할 수 있다. 등록 사용자는 연결된 키의 사용량만 본다.
 - 키 발급에는 예산이 필요하다. 모델을 비우면 `gpt-4o-mini`만 연다. 이미 있는 별칭은 다시 만들지 않는다.
 - 사용량 날짜는 한국 시간이다. 학급 예산 소진 예상은 학급을 합치지 않고 가장 빨리 끝나는 학급을 보여 준다.

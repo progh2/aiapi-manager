@@ -3,17 +3,20 @@ services:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: aiapi-litellm
     restart: unless-stopped
-    ports:
-      - "${LITELLM_PORT:-4000}:4000"
+    # 학생 PC 의 실제 IP 를 기록하려고 NAS(호스트) 네트워크에 직접 붙인다.
+    # 브리지 네트워크에서 포트를 공개하면 시놀로지 도커가 연결을 대신 넘겨, 모든 호출이 도커 게이트웨이(172.x.0.1)로 찍힌다.
+    # Docker Desktop(Windows·Mac)처럼 호스트 네트워크가 안 되는 곳은 docker-compose.bridge.yml 을 덧붙인다.
+    network_mode: host
     volumes:
       - ./litellm/config.yaml:/app/config.yaml:ro
       - ./litellm/aiapi_policy.py:/app/aiapi_policy.py:ro
-    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    command: ["--config", "/app/config.yaml", "--port", "${LITELLM_PORT:-4000}"]
     environment:
       TZ: ${TZ:-Asia/Seoul}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@db:5432/litellm
+      # DB 는 NAS 자신(127.0.0.1)에만 열어 둔 포트로 붙는다.
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_HOST_PORT:-15432}/litellm
       STORE_MODEL_IN_DB: "True"
       # LiteLLM 자체 관리 화면(/ui). 관리는 admin-ui 가 하므로 기본으로 끈다. 켜려면 .env 에 False.
       DISABLE_ADMIN_UI: ${LITELLM_DISABLE_ADMIN_UI:-True}
@@ -27,14 +30,12 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=4)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${LITELLM_PORT:-4000}/health/liveliness', timeout=4)",
         ]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 40s
-    networks:
-      - aiapi-internal
 
   admin-ui:
     build: ./admin-ui
@@ -49,11 +50,14 @@ services:
       FIREBASE_AUTH_DOMAIN: ${FIREBASE_AUTH_DOMAIN:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      LITELLM_BASE_URL: http://litellm:4000
+      # litellm 은 NAS 네트워크에 있으므로 도커가 알려 주는 NAS 주소로 부른다.
+      LITELLM_BASE_URL: http://host.docker.internal:${LITELLM_PORT:-4000}
       USERS_DATA_PATH: /app/data/users.json
       # 학생 안내에 쓰는 프록시 주소. 비우면 접속한 주소와 LITELLM_PORT 로 만든다.
       PUBLIC_PROXY_URL: ${PUBLIC_PROXY_URL:-}
       LITELLM_PORT: ${LITELLM_PORT:-4000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./admin-ui/data:/app/data
     depends_on:
@@ -79,7 +83,9 @@ services:
     image: postgres:16-alpine
     container_name: aiapi-postgres
     restart: unless-stopped
-    # 외부 포트를 열지 않음 — litellm 컨테이너에서만 내부 네트워크로 접근
+    # NAS 자신(127.0.0.1)에만 연다. 호스트 네트워크의 litellm 만 쓰고, 학교 망에서는 닿지 않는다.
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
     environment:
       TZ: ${TZ:-Asia/Seoul}
       POSTGRES_USER: litellm

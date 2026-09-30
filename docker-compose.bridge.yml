@@ -1,0 +1,29 @@
+# 호스트 네트워크를 쓸 수 없는 곳(Docker Desktop for Windows·Mac)에서 덧붙이는 파일.
+# litellm 을 예전처럼 도커 브리지 네트워크에 두고 포트를 공개한다. 대신 호출 IP 는 도커 주소(172.x.0.1)로 기록된다.
+#   docker compose -f docker-compose.yml -f docker-compose.bridge.yml up -d --build
+# (!reset 은 Docker Compose 2.24 이상에서 된다)
+services:
+  litellm:
+    network_mode: !reset null
+    networks:
+      - aiapi-internal
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@db:5432/litellm
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=4)",
+        ]
+
+  admin-ui:
+    environment:
+      LITELLM_BASE_URL: http://litellm:4000
+
+  db:
+    ports: !reset []
