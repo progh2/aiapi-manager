@@ -46,8 +46,22 @@ function applySettings() {
 applySettings();
 
 // ---------------------------------------------------------------- 부팅 화면
+// 부팅 화면은 지우지 않고 숨긴다. 로그인 화면을 거쳐 들어올 때 다시 띄워, 데이터를 받는 동안
+// 검은 화면 대신 진행 상황을 보인다. (예전에는 지운 뒤 boot() 가 #boot-bar 를 못 찾아 멈췄다)
+const bootBox = $("#boot");
 const bootLines = $("#boot-lines");
+const bootBar = $("#boot-bar");
 let bootStep = 0;
+let bootTimers = [];
+function bootShow() {
+  bootTimers.forEach(clearTimeout);
+  bootTimers = [];
+  bootLines.innerHTML = "";
+  bootStep = 0;
+  bootBar.style.width = "0";
+  bootBox.hidden = false;
+  bootBox.classList.remove("done");
+}
 function boot(text, cls = "") {
   const div = document.createElement("div");
   if (cls) div.className = cls;
@@ -55,12 +69,15 @@ function boot(text, cls = "") {
   bootLines.appendChild(div);
   while (bootLines.children.length > 7) bootLines.firstElementChild.remove();
   bootStep += 1;
-  $("#boot-bar").style.width = `${Math.min(100, bootStep * 13)}%`;
+  bootBar.style.width = `${Math.min(100, bootStep * 13)}%`;
 }
 function bootDone() {
-  $("#boot-bar").style.width = "100%";
-  setTimeout(() => $("#boot").classList.add("done"), document.body.classList.contains("reduce-motion") ? 0 : 350);
-  setTimeout(() => $("#boot").remove(), 1100);
+  bootBar.style.width = "100%";
+  bootTimers.forEach(clearTimeout);
+  bootTimers = [
+    setTimeout(() => bootBox.classList.add("done"), document.body.classList.contains("reduce-motion") ? 0 : 350),
+    setTimeout(() => { bootBox.hidden = true; }, 1100),
+  ];
 }
 boot("관제 시스템 기동");
 
@@ -71,11 +88,15 @@ const mockAs = new URLSearchParams(location.search).get("as");
 let auth;
 if (MOCK) {
   const user = { email: mockAs || "teacher@school.kr", getIdToken: async () => (mockAs ? `mock:${mockAs}` : "mock") };
+  // ?login=1 이면 실제 구글 로그인처럼 로그인 화면부터 시작한다(로그인 뒤 흐름을 시험하려고).
+  let current = new URLSearchParams(location.search).has("login") ? null : user;
+  const listeners = [];
+  const fire = () => listeners.forEach((cb) => cb(current));
   auth = {
-    currentUser: user,
-    onAuthStateChanged(cb) { queueMicrotask(() => cb(user)); },
-    signOut: async () => {},
-    signInWithPopup: async () => {},
+    get currentUser() { return current; },
+    onAuthStateChanged(cb) { listeners.push(cb); queueMicrotask(() => cb(current)); },
+    signOut: async () => { current = null; fire(); },
+    signInWithPopup: async () => { await new Promise((r) => setTimeout(r, 300)); current = user; fire(); },
   };
 } else if (typeof window.firebase === "undefined") {
   auth = null;
@@ -112,9 +133,9 @@ function showLogin(message = "") {
 }
 
 $("#login-btn").addEventListener("click", () => {
-  if (!auth || MOCK) return;
+  if (!auth) return;
   $("#login-error").textContent = "";
-  auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider()).catch((e) => {
+  auth.signInWithPopup(MOCK ? null : new window.firebase.auth.GoogleAuthProvider()).catch((e) => {
     if (e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") return;
     $("#login-error").textContent = `${LOGIN_HINT[e.code] || e.message} (${e.code || "오류"})`;
   });
@@ -123,8 +144,19 @@ $("#login-btn").addEventListener("click", () => {
 if (!auth) showLogin();
 else {
   boot("승무원 인증 확인");
+  let startedAs = null;
   auth.onAuthStateChanged(async (user) => {
+    // 이미 화면을 연 뒤 로그아웃되거나 다른 계정이 되면 처음부터 다시 연다.
+    if (startedAs) {
+      if (!user || user.email !== startedAs) location.reload();
+      return;
+    }
     if (!user) { showLogin(); return; }
+    // 로그인 화면을 거쳐 들어왔으면 부팅 화면을 다시 띄워 데이터를 받는 동안 보인다.
+    if (bootBox.hidden || bootBox.classList.contains("done")) {
+      bootShow();
+      boot("승무원 인증 확인");
+    }
     const api = createApi(() => auth.currentUser.getIdToken());
     let me;
     try {
@@ -135,9 +167,18 @@ else {
       return;
     }
     $("#login").hidden = true;
+    startedAs = user.email;
     const proxyUrl = () => settings.proxyUrl || me.proxy_url || `${location.protocol}//${location.hostname}:${me.proxy_port || 4000}`;
-    if (me.role === "admin") startAdmin({ api, me, proxyUrl });
-    else startPilotView({ api, me, proxyUrl });
+    try {
+      await (me.role === "admin" ? startAdmin({ api, me, proxyUrl }) : startPilotView({ api, me, proxyUrl }));
+    } catch (e) {
+      // 화면을 여는 중 오류가 나도 검은 화면으로 멈추지 않게 알린다.
+      console.error("[bridge] 화면을 열지 못했습니다", e);
+      boot(`화면을 열지 못했습니다: ${e.message}`, "bad");
+      showLogin(`화면을 여는 중 오류가 났습니다: ${esc(e.message)}. 새로고침해 보세요.`);
+      $("#app").hidden = true;
+      $("#pilot").hidden = true;
+    }
   });
 }
 
