@@ -105,3 +105,21 @@ describe("durationFromExpiryDate", () => {
     assert.throws(() => durationFromExpiryDate("31/12/2026"), /YYYY-MM-DD/);
   });
 });
+
+describe("이메일 칸", () => {
+  it("학번,이름,이메일 헤더를 읽고 소문자로 맞춘다", () => {
+    const { students, errors } = parseRoster("학번,이름,이메일\n20261001,홍길동,Hong@School.kr\n20261002,김철수,");
+    assert.deepEqual(errors, []);
+    assert.equal(students[0].email, "hong@school.kr");
+    assert.equal(students[1].email, undefined);
+  });
+  it("헤더가 없으면 @ 가 든 칸을 이메일로 본다", () => {
+    const { students } = parseRoster("20261001 홍길동 hong@school.kr\nkim@school.kr,20261002,김철수");
+    assert.deepEqual(students.map((s) => [s.alias, s.email]), [["20261001-홍길동", "hong@school.kr"], ["20261002-김철수", "kim@school.kr"]]);
+  });
+  it("형식이 틀린 이메일은 해석 실패로 남긴다", () => {
+    const { students, errors } = parseRoster("학번,이름,email\n20261003,이영희,bad-email");
+    assert.equal(students.length, 0);
+    assert.match(errors[0].error, /이메일 형식/);
+  });
+});

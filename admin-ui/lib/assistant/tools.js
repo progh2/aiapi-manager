@@ -587,7 +587,7 @@ const USER_TOOLS = [
           base_url: base,
           models,
           python: `from openai import OpenAI\nclient = OpenAI(api_key="발급받은_키", base_url="${base}")\nr = client.chat.completions.create(model="${models[0] || "gpt-4o-mini"}", messages=[{"role": "user", "content": "안녕"}])\nprint(r.choices[0].message.content)`,
-          note: "키는 선생님께 받은 sk- 로 시작하는 값입니다. 키를 친구와 나누거나 인터넷에 올리지 마세요.",
+          note: "키는 이 조종석의 '내 키' 카드에서 마우스를 올리면 보이고 복사 버튼으로 복사할 수 있습니다. [내 키 넣어 코드 복사]를 누르면 키가 들어간 코드가 복사됩니다. 키를 친구와 나누거나 인터넷에 올리지 마세요.",
         },
         summary: "접속 방법 확인",
       };

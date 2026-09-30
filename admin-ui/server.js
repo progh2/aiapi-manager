@@ -23,7 +23,9 @@ const { toActivity, summarizeActivity, activityQuery, rowsOf } = require("./lib/
 const { adjustKeys } = require("./lib/key-adjust");
 const { lockdownTeam, liftLockdown } = require("./lib/lockdown");
 const { AssistantStore } = require("./lib/assistant/store");
-const { mountAssistant } = require("./lib/assistant/routes");
+const { mountAssistant, createLimiter } = require("./lib/assistant/routes");
+const { KeyVault } = require("./lib/key-vault");
+const { linkStudentAccounts } = require("./lib/user-link");
 const { version: APP_VERSION } = require("./package.json");
 
 const {
@@ -37,6 +39,9 @@ const {
   PROVIDER_KEYS_PATH = path.join(__dirname, "data", "provider-keys.json"),
   AUDIT_LOG_PATH = path.join(__dirname, "data", "audit.jsonl"),
   ASSISTANT_DATA_PATH = path.join(__dirname, "data", "assistant.json"),
+  // 학생이 로그인해 자기 키를 다시 볼 수 있게 발급한 키 원문을 암호화해 둔다.
+  KEY_VAULT_PATH = path.join(__dirname, "data", "key-vault.json"),
+  KEY_VAULT_SECRET = "",
   // 학생에게 안내할 프록시 주소. 비우면 화면이 접속 주소와 LITELLM_PORT 로 만든다.
   PUBLIC_PROXY_URL = "",
   LITELLM_PORT = "4000",
@@ -58,6 +63,8 @@ const usersStore = new UsersStore(USERS_DATA_PATH);
 const providerStore = new ProviderKeyStore(PROVIDER_KEYS_PATH);
 const auditLog = new AuditLog(AUDIT_LOG_PATH);
 const assistantStore = new AssistantStore(ASSISTANT_DATA_PATH);
+const keyVault = new KeyVault(KEY_VAULT_PATH, KEY_VAULT_SECRET || LITELLM_MASTER_KEY);
+const revealLimiter = createLimiter();
 const STARTED_AT = Date.now();
 const firebaseClientConfig = {
   apiKey: FIREBASE_API_KEY || "REPLACE_ME",
@@ -161,6 +168,14 @@ async function litellm(path, method = "GET", body) {
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(data.error?.message || `LiteLLM ${resp.status}`);
+  // 새로 만든 키 원문은 이 응답에만 온다. 학생이 나중에 로그인해 볼 수 있게 암호화해 보관한다(비서 전용 키는 뺀다).
+  if (path === "/key/generate" && data && typeof data.key === "string" && !(body && body.metadata && body.metadata.aiapi_system)) {
+    try {
+      keyVault.put(data.key, { alias: data.key_alias || (body && body.key_alias) || null });
+    } catch (e) {
+      console.error("키 보관 실패:", e.message);
+    }
+  }
   return data;
 }
 
@@ -320,11 +335,15 @@ app.post("/api/keys/bulk", requireAdmin, async (req, res) => {
   try {
     const prepared = attachProvider(req.body, providerStore);
     const out = await assignClassBudgets(prepared, { litellm });
+    // 명단에 이메일이 있으면 학생 계정을 등록·연결한다. 학생은 그 구글 계정으로 로그인해 자기 키를 본다.
+    out.accounts = linkStudentAccounts(usersStore, out.results, { by: req.adminEmail, adminEmails });
     const n = out.results.length;
-    const fail = out.results.filter((r) => r.error).length;
+    const fail = out.results.filter((r) => r.error && !r.skipped).length;
+    const acc = out.accounts;
     record(req, "keys.bulk", out.team_alias || await teamLabel(out.team_id), {
       count: n, failed: fail, budget: out.max_budget, expires: out.expires, models: out.models,
-    }, `일괄 발급: ${n}명 (실패 ${fail})`);
+      accounts_created: acc.created || undefined, accounts_linked: acc.linked || undefined,
+    }, `일괄 발급: ${n}명 (실패 ${fail})${acc.created || acc.linked ? ` · 계정 등록 ${acc.created} · 연결 ${acc.linked}` : ""}`);
     res.json(out);
   } catch (e) {
     res.status(e.status || 502).json({ error: e.message });
@@ -554,7 +573,8 @@ app.get("/api/models", requireAdmin, async (req, res) => {
 // 키 목록 (사용량 포함). size는 LiteLLM이 100까지만 허용하므로 페이지를 돌며 모두 모은다.
 app.get("/api/keys", requireAdmin, async (req, res) => {
   try {
-    res.json({ keys: await fetchAllKeys() });
+    // secret_stored: 키 원문이 보관돼 학생 조종석에서 볼 수 있는지
+    res.json({ keys: (await fetchAllKeys()).map((k) => ({ ...k, secret_stored: keyVault.has(k.token), secret_hint: keyVault.hint(k.token) })) });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
@@ -659,6 +679,8 @@ app.post("/api/keys/reissue", requireAdmin, async (req, res) => {
   if (!req.body.token) return res.status(400).json({ error: "token이 필요합니다" });
   try {
     const out = await reissueKey(req.body.token, { litellm });
+    // 막은 옛 키 원문은 더 둘 까닭이 없다. 새 키는 발급하면서 보관됐다.
+    try { keyVault.remove([req.body.token]); } catch (e) { console.error("옛 키 보관 삭제 실패:", e.message); }
     record(req, "key.reissue", out.key_alias, { retired_alias: out.retired_alias, budget: out.max_budget },
       `키 폐기 후 재발급: ${out.key_alias} (이전 ${out.retired_alias})`);
     res.json(out);
@@ -695,6 +717,7 @@ app.post("/api/keys/delete", requireAdmin, async (req, res) => {
       if (!doomed.has(k.token) && k.key_alias) removedAliases.delete(k.key_alias);
     }
     const data = await litellm("/key/delete", "POST", { keys });
+    try { keyVault.remove(keys); } catch (e) { console.error("키 보관 삭제 실패:", e.message); }
     if (removedAliases.size && !usersStore.isCorrupt()) {
       for (const u of usersStore.list()) {
         const next = (u.key_aliases || []).filter((a) => !removedAliases.has(a));
@@ -829,6 +852,7 @@ app.get("/api/status", requireAdmin, async (_req, res) => {
       providers: { ok: !providerStore.isCorrupt(), count: providerStore.isCorrupt() ? null : providerStore.list().length },
       audit: { count: auditLog.size() },
       assistant: { ok: !assistantStore.isCorrupt() },
+      key_vault: { ok: !keyVault.isCorrupt(), count: keyVault.isCorrupt() ? null : keyVault.size() },
     },
     assistant: (() => {
       const a = assistantStore.publicView();
@@ -857,10 +881,53 @@ app.get("/api/my/keys", requireRegistered, async (req, res) => {
     const [allKeys, teams] = await Promise.all([fetchAllKeys(), listTeams()]);
     const names = new Map(teams.map((t) => [t.team_id, t.team_alias || t.team_id.slice(0, 8)]));
     const mine = allKeys.filter((k) => (req.user.key_aliases || []).includes(k.key_alias));
-    res.json({ keys: mine.map((k) => toPublicKey(k, names)) });
+    // 키 원문은 싣지 않는다. 보관돼 있는지와 끝 네 글자만 준다. 원문은 /api/my/keys/reveal 로 누를 때만.
+    res.json({
+      keys: mine.map((k) => ({
+        ...toPublicKey(k, names),
+        secret_available: keyVault.has(k.token),
+        key_hint: keyVault.hint(k.token) || (typeof k.key_name === "string" ? k.key_name.slice(-4) : null),
+      })),
+    });
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
+});
+
+// 등록 사용자가 자기 키 원문을 본다(가려진 키에 마우스를 올리거나 복사를 누를 때). 작업 기록에 남긴다.
+app.post("/api/my/keys/reveal", requireRegistered, async (req, res) => {
+  if (req.user.role === "admin") return res.status(403).json({ error: "관리자는 키 상세에서 보세요" });
+  const alias = String((req.body && req.body.alias) || "");
+  if (!alias || !(req.user.key_aliases || []).includes(alias)) return res.status(404).json({ error: "내 계정에 연결된 키가 아닙니다" });
+  if (!revealLimiter.take(`reveal:${req.user.email}`, 120)) return res.status(429).json({ error: "잠시 뒤에 다시 시도하세요" });
+  if (keyVault.isCorrupt()) return res.status(503).json({ error: "키 보관함 파일이 손상되었습니다. 선생님께 알려 주세요." });
+  try {
+    const key = (await fetchAllKeys()).find((k) => k.key_alias === alias);
+    if (!key) return res.status(404).json({ error: "키를 찾을 수 없습니다" });
+    const secret = keyVault.get(key.token);
+    if (!secret) {
+      return res.status(404).json({ error: "이 키는 발급할 때 보관되지 않아 여기서 볼 수 없어요. 선생님께 '새 키로 교체'를 부탁하세요.", code: "not_stored" });
+    }
+    const purpose = req.body.purpose === "copy" ? "copy" : "view";
+    record(req, "key.reveal", alias, { purpose, by: "student" }, `학생 키 ${purpose === "copy" ? "복사" : "확인"}: ${alias}`);
+    res.set("Cache-Control", "no-store");
+    res.json({ key: secret });
+  } catch (e) {
+    res.status(e.status || 502).json({ error: e.message });
+  }
+});
+
+// 관리자가 보관된 키 원문을 본다(학생을 도울 때). 작업 기록에 남긴다.
+app.post("/api/keys/reveal", requireAdmin, async (req, res) => {
+  const token = String((req.body && req.body.token) || "");
+  if (!token) return res.status(400).json({ error: "token이 필요합니다" });
+  if (keyVault.isCorrupt()) return res.status(503).json({ error: "key-vault.json 이 손상되었습니다" });
+  const secret = keyVault.get(token);
+  if (!secret) return res.status(404).json({ error: "보관된 키가 아닙니다. '새 키로 교체'하면 보관되어 학생 화면에도 보입니다.", code: "not_stored" });
+  const alias = String((req.body && req.body.alias) || "") || token.slice(0, 12);
+  record(req, "key.reveal", alias, { purpose: req.body.purpose === "copy" ? "copy" : "view", by: "admin" }, `관리자 키 확인: ${alias}`);
+  res.set("Cache-Control", "no-store");
+  res.json({ key: secret });
 });
 
 app.get("/api/my/analytics", requireRegistered, async (req, res) => {

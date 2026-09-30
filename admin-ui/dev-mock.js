@@ -15,6 +15,7 @@ const os = require("os");
 const path = require("path");
 const { scheduleAllows } = require("./lib/schedule");
 const { createFakeLlm, openaiReply } = require("./dev-llm");
+const { KeyVault } = require("./lib/key-vault");
 
 const PORT = Number(process.env.PORT || 3456);
 const LITE_PORT = Number(process.env.MOCK_LITELLM_PORT || 4455);
@@ -481,6 +482,13 @@ function seed(dataDir) {
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "aiapi-mock-"));
 seed(dataDir);
 
+// 시연용 키 원문을 보관함에 넣어 학생 조종석에서 볼 수 있게 한다.
+// 3학년B반(2026200x)은 "이 기능 전에 만든 키"처럼 비워 두어 새 키로 교체하는 흐름을 볼 수 있다.
+{
+  const vault = new KeyVault(path.join(dataDir, "key-vault.json"), MASTER);
+  for (const k of db.keys) if (k._raw && !/^2026200/.test(k.key_alias || "")) vault.put(k._raw, { alias: k.key_alias });
+}
+
 createFakeLlm().listen(LLM_PORT, "127.0.0.1");
 // 엘피를 흉내 Ollama 에 미리 연결해 둔다. 설정 화면 흐름을 보려면 MOCK_ASSISTANT=off.
 if (process.env.MOCK_ASSISTANT !== "off") {
@@ -516,6 +524,7 @@ lite.listen(LITE_PORT, "127.0.0.1", () => {
     PROVIDER_KEYS_PATH: path.join(dataDir, "provider-keys.json"),
     AUDIT_LOG_PATH: path.join(dataDir, "audit.jsonl"),
     ASSISTANT_DATA_PATH: path.join(dataDir, "assistant.json"),
+    KEY_VAULT_PATH: path.join(dataDir, "key-vault.json"),
     PUBLIC_PROXY_URL: process.env.PUBLIC_PROXY_URL || "http://192.168.0.10:4000",
   });
   require("./server.js");

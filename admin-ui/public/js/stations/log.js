@@ -18,6 +18,7 @@ export const ACTION_LABEL = {
   "pool.create": "묶음 등록", "pool.delete": "묶음 삭제",
   "user.create": "사용자 등록", "user.update": "사용자 수정", "user.delete": "사용자 삭제",
   "assistant.config": "AI 엘피 설정",
+  "key.reveal": "키 확인",
 };
 const DETAIL_LABEL = {
   count: "개수", failed: "실패", budget: "예산", add_budget: "충전", add_days: "연장(일)", expires: "만료", models: "모델",
@@ -25,12 +26,15 @@ const DETAIL_LABEL = {
   retired_alias: "이전 별칭", schedule_keys: "시간표 반영 키", label: "이름", provider: "회사", secret_changed: "비밀 키 변경",
   members: "멤버", name: "이름", key_aliases: "연결 키", max_budget: "예산", rpm_limit: "RPM", tpm_limit: "TPM", duration: "기간",
   enabled: "켜짐", mode: "방식", model: "모델", server: "서버", mask_names: "이름 가림", allow_users: "학생 상담", proxy_key_created: "전용 키 새로 만듦",
+  purpose: "방법", by: "누가", accounts_created: "계정 등록", accounts_linked: "계정 연결",
 };
+
+const VALUE_LABEL = { view: "보기", copy: "복사", student: "학생", admin: "관리자" };
 
 function detailText(d) {
   if (!d || typeof d !== "object") return d ? String(d) : "";
   return Object.entries(d).filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length)).map(([k, v]) => {
-    const val = Array.isArray(v) ? (v.length > 6 ? `${v.slice(0, 6).join(", ")} 외 ${v.length - 6}` : v.join(", ")) : typeof v === "boolean" ? (v ? "예" : "아니오") : String(v);
+    const val = Array.isArray(v) ? (v.length > 6 ? `${v.slice(0, 6).join(", ")} 외 ${v.length - 6}` : v.join(", ")) : typeof v === "boolean" ? (v ? "예" : "아니오") : (VALUE_LABEL[v] || String(v));
     if (k === "via") return "";
     return `${DETAIL_LABEL[k] || k} ${val}`;
   }).filter(Boolean).join(" · ");

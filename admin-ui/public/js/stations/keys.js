@@ -7,6 +7,7 @@ import {
 import { state, teamName, teamById, loadKeys, loadTeams, providerIdFromModels } from "../lib/store.js";
 import { toast, toastError, modal, confirmDialog, drawer, reveal, busy } from "../lib/ui.js";
 import { RESET_OPTIONS, teamOptions, providerOptions, bindModelPicker, scheduleEditor } from "../lib/forms.js";
+import { mountSecret } from "../lib/secret.js";
 
 const FILTERS = [
   ["", "전체 (폐기 제외)"],
@@ -21,6 +22,7 @@ const FILTERS = [
   ["camp_today", "오늘 캠프"],
   ["camp_due", "만료된 캠프"],
   ["retired", "폐기된 키"],
+  ["unstored", "학생 화면에 안 보이는 키"],
 ];
 const PAGE = 150;
 
@@ -29,6 +31,8 @@ function matches(k, f, now) {
   switch (f) {
     case "": return !isRetired(k);
     case "retired": return isRetired(k);
+    // 이 기능 전에 만들어 원문이 보관되지 않은 키. 새 키로 교체하면 학생 조종석에 보인다.
+    case "unstored": return !isRetired(k) && !k.secret_stored && !(k.metadata && k.metadata.aiapi_system);
     case "warn": { const r = budgetRatio(k.spend, k.max_budget); return !k.blocked && r != null && r >= 0.8 && r < 1; }
     case "over": { const r = budgetRatio(k.spend, k.max_budget); return !k.blocked && r != null && r >= 1; }
     case "locked": return Boolean(k.blocked && isLocked(k));
@@ -130,6 +134,7 @@ export default {
       if (act === "bulk-unblock") return this.bulk("unblock");
       if (act === "bulk-delete") return this.bulk("delete");
       if (act === "bulk-topup") return this.bulkTopup();
+      if (act === "bulk-rekey") return this.bulkRekey();
       if (act === "bulk-clear") { this.selected.clear(); this.render(); return; }
       if (!k) return;
       if (act === "detail") this.openDetail(k.token);
@@ -222,6 +227,7 @@ export default {
       <button class="btn sm warn" type="button" data-act="bulk-block">${icon("ban")}일괄 차단</button>
       <button class="btn sm" type="button" data-act="bulk-unblock">${icon("unlock")}일괄 해제</button>
       <button class="btn sm" type="button" data-act="bulk-topup">${icon("coin")}충전·연장</button>
+      <button class="btn sm" type="button" data-act="bulk-rekey" title="옛 키를 막고 같은 별칭으로 새 키를 만들어, 학생이 로그인해 볼 수 있게 합니다">${icon("keys")}새 키로 교체</button>
       <button class="btn sm danger" type="button" data-act="bulk-delete">${icon("trash")}회수(삭제)</button>
       <span style="flex:1"></span>
       <button class="btn sm ghost" type="button" data-act="bulk-clear">선택 해제</button></div>` : "";
@@ -328,12 +334,41 @@ export default {
       await loadKeys();
     } catch (e) { toastError(e); }
   },
+  // 선택한 키를 새 키로 바꾼다. 새 키는 보관되어 학생이 로그인하면 조종석에서 볼 수 있다.
+  async bulkRekey() {
+    const list = state.keys.filter((k) => this.selected.has(k.token) && !isRetired(k));
+    if (!list.length) { toast("바꿀 키를 고르세요(폐기된 키는 뺍니다)", { tone: "warn" }); return; }
+    const ok = await confirmDialog({
+      title: `키 ${list.length}개를 새 키로 교체`,
+      message: "옛 키를 막고 같은 별칭·남은 예산으로 새 키를 만듭니다. 새 키는 보관되어, 연결된 학생이 로그인하면 조종석에서 보고 복사할 수 있습니다.",
+      detail: `옛 키로 된 학생 코드는 바로 막힙니다. 학생에게 "로그인해서 새 키로 바꿔 넣으라"고 알려 주세요.\n계정에 연결되지 않은 키는 사용자 화면(07)에서 이메일과 연결해야 학생이 볼 수 있습니다.`,
+      confirmLabel: "교체", tone: "warn", typed: list.length >= 5 ? "교체" : "",
+    });
+    if (!ok) return;
+    const done = [];
+    const failed = [];
+    const close = toast(`새 키로 교체하는 중… 0 / ${list.length}`, { timeout: 0 });
+    for (const [i, k] of list.entries()) {
+      try {
+        const out = await this.ctx.api("/api/keys/reissue", { method: "POST", body: { token: k.token } });
+        done.push(out);
+      } catch (e) { failed.push({ alias: k.key_alias, error: e.message }); }
+      const t = document.querySelector("#toasts .toast:last-child .msg");
+      if (t) t.textContent = `새 키로 교체하는 중… ${i + 1} / ${list.length}`;
+    }
+    close();
+    this.selected.clear();
+    await loadKeys();
+    toast(`${done.length}개 교체${failed.length ? ` · 실패 ${failed.length}` : ""}. 학생은 로그인해 새 키를 볼 수 있어요.`, { tone: failed.length ? "warn" : "good" });
+    if (failed.length) modal({ title: "교체하지 못한 키", body: `<ul>${failed.map((f) => `<li>${esc(f.alias || "")} — ${esc(f.error)}</li>`).join("")}</ul>` });
+  },
+
   async reissue(k) {
     const left = k.max_budget == null ? "무제한" : `남은 ${money(Math.max(0, Number(k.max_budget) - Number(k.spend || 0)))}`;
     const ok = await confirmDialog({
       title: `'${k.key_alias}' 폐기 후 새 키`,
       message: "비밀 키가 새었을 때 씁니다. 이전 키를 막고 같은 별칭으로 새 키를 만듭니다.",
-      detail: `이전 키는 차단되고 별칭이 '${k.key_alias}-폐기'로 바뀝니다.\n새 키 예산: ${left}. 모델·학급·시간대·속도 제한은 그대로입니다.\n새 비밀 키는 한 번만 보입니다.`,
+      detail: `이전 키는 차단되고 별칭이 '${k.key_alias}-폐기'로 바뀝니다.\n새 키 예산: ${left}. 모델·학급·시간대·속도 제한은 그대로입니다.\n새 키는 보관되어, 연결된 학생이 로그인하면 조종석에서 볼 수 있습니다.`,
       confirmLabel: "폐기하고 새 키 만들기", tone: "warn",
     });
     if (!ok) return;
@@ -453,6 +488,8 @@ export default {
             <button class="btn sm" type="button" id="d-reissue" ${isRetired(k) ? "disabled" : ""}>폐기 후 새 키</button>
             <button class="btn sm danger" type="button" id="d-del">${icon("trash")}삭제</button>
           </div>
+          <h4 style="margin:18px 0 8px;font-size:14px">API 키 <span class="muted" style="font-weight:400;font-size:12px">연결된 학생은 로그인해 조종석에서 봅니다</span></h4>
+          <div id="d-secret"></div>
           <h4 style="margin:18px 0 8px;font-size:14px">충전 · 연장</h4>
           <p class="help">금액은 지금 한도에 <b>더하고</b>, 연장은 기존 만료일에 일수를 더합니다(지났거나 없으면 지금부터).</p>
           <div class="form-grid">
@@ -468,6 +505,22 @@ export default {
           <div id="d-calls" class="muted" style="font-size:12px">불러오는 중…</div>`;
         let cur = { ...k };
         paint(cur);
+        const sec = b.querySelector("#d-secret");
+        const owners = state.users.filter((u) => (u.key_aliases || []).includes(k.key_alias)).map((u) => u.email);
+        if (k.secret_stored) {
+          mountSecret(sec, {
+            hint: k.secret_hint || (k.key_name || "").slice(-4),
+            note: `${owners.length ? `연결된 계정: ${owners.join(", ")}` : "연결된 학생 계정이 없습니다 — 07 사용자에서 이메일과 연결하세요"} · 보기·복사는 작업 기록에 남습니다`,
+            copied: "키를 복사했습니다",
+            fetchSecret: (purpose) => self.ctx.api("/api/keys/reveal", { method: "POST", body: { token: k.token, alias: k.key_alias, purpose } }).then((r) => r.key),
+          });
+        } else if (!isRetired(k)) {
+          sec.innerHTML = `<div class="keybox off">이 키는 보관 기능 전에 만들어 원문이 없습니다. 학생 화면에 보이려면 새 키로 교체하세요.
+            <div class="row" style="margin-top:8px"><button class="btn xs" type="button" id="d-rekey">${icon("keys")}새 키로 교체</button></div></div>`;
+          sec.querySelector("#d-rekey").onclick = () => { h.close(); self.reissue(cur); };
+        } else {
+          sec.innerHTML = '<div class="keybox off">폐기된 키입니다.</div>';
+        }
         const preview = () => {
           const add = Number(b.querySelector("#d-add").value);
           const days = Number(b.querySelector("#d-days").value);
