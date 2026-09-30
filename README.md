@@ -333,6 +333,7 @@ npm run mock      # http://127.0.0.1:3456  (관리자) · /?as=student@school.kr
 가짜 학생 호출을 계속 만들면서 **실제 `server.js`** 를 그대로 올린다. 인증만 스텁이다. `MOCK_SIMULATE=0` 이면 가짜 호출을 멈춘다.
 `dev-llm.js` 는 AI 엘피용 **흉내 LLM**(:4456, Ollama·OpenAI 호환)이다. 낱말 규칙으로 도구를 불러 제안 카드까지 시연한다.
 엘피는 처음부터 이 흉내 Ollama 에 연결되어 있고, `MOCK_ASSISTANT=off` 면 설정을 비운 채 시작한다. 배포에는 쓰지 않는다.
+주소에 `?login=1` 을 붙이면 실제 구글 로그인처럼 로그인 화면부터 시작해, 로그인 뒤 흐름을 시험할 수 있다(`?login=1&as=student@school.kr` 는 등록 사용자).
 
 ## NAS/PC 재확인 (이슈 #9)
 
