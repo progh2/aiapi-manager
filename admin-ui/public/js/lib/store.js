@@ -262,6 +262,9 @@ export function alerts() {
     add("warn", `${soon.name} 예산이 약 ${soon.daysLeft}일 뒤 소진`, `최근 속도 기준 · 잔여 ${money(Math.max(0, soon.left))}`, { station: "telemetry" });
   }
   const sum = state.activity.summary;
+  if (sum && sum.unpriced) {
+    add("warn", `가격 없는 모델 호출 ${sum.unpriced}건`, `${(sum.unpriced_models || []).join(", ")} — LiteLLM 가격표에 없는 모델이라 비용이 $0 으로 기록되고 예산이 줄지 않습니다. litellm 컨테이너를 다시 시작하면 최신 가격표를 받아 옵니다.`, { station: "log", tab: "activity" });
+  }
   if (sum && sum.total >= 10 && sum.failed / sum.total >= 0.3) {
     add("warn", `최근 호출 실패율 ${Math.round((sum.failed / sum.total) * 100)}%`, "기록 → 실시간 호출에서 이유를 확인하세요.", { station: "log", tab: "activity" });
   }

@@ -24,6 +24,8 @@ describe("실패 이유", () => {
     ["ExceededBudget: User=provider:openai-a over budget. Spend=20.1, Budget=20", "provider_budget"],
     ["ExceededBudget: User=pool:class-mix over budget. Spend=5, Budget=5", "provider_budget"],
     ["key not allowed to access model. This key can only access models=['gpt-4o-mini']. Tried to access gpt-4o", "model_denied"],
+    // 새 LiteLLM (ModelAccessDeniedProxyException)
+    ["The requested model 'gpt-6-luna' is not available for this API key, or the model name is invalid. Check the models available to you and try again.", "model_denied"],
     ["Authentication Error, Invalid proxy server token passed. Received API Key = sk-..., Key Hash (Token) =c8c2", "invalid_key"],
     ["Rate limit exceeded: Crossed RPM limit", "rate_limit"],
     ["AuthenticationError: OpenAIException - Incorrect API key provided: sk-test-*ummy", "provider_auth"],
@@ -130,5 +132,33 @@ describe("요약과 질의", () => {
     assert.equal(out.includes("SECRET123"), false);
     assert.equal(out.includes("c8c22e0190"), false);
     assert.equal(out.includes("abc.def"), false);
+  });
+});
+
+describe("가격 없는 호출", () => {
+  const okRow = (extra = {}) => ({
+    request_id: "r2", api_key: "hash-1", status: "success", startTime: "2026-09-30T07:15:00.000Z",
+    model_group: "openai-a/gpt-6-luna", custom_llm_provider: "openai", total_tokens: 3109, prompt_tokens: 3000, completion_tokens: 109,
+    spend: 0, metadata: {}, ...extra,
+  });
+  it("모델 거부 클래스 이름만 있어도 허용 안 된 모델로 푼다", () => {
+    assert.equal(explainFailure(failRow("", { klass: "ModelAccessDeniedProxyException" })).reason, "허용 안 된 모델");
+  });
+  it("토큰을 썼는데 비용이 정확히 0 이면 가격 없음으로 표시한다", () => {
+    assert.equal(toActivity(okRow()).unpriced, true);
+  });
+  it("아주 싼 모델(비용이 0 보다 큼)은 가격 없음이 아니다", () => {
+    assert.equal(toActivity(okRow({ spend: 0.00035 })).unpriced, undefined);
+  });
+  it("로컬 Ollama 와 캐시 적중은 0원이 맞다", () => {
+    assert.equal(toActivity(okRow({ custom_llm_provider: "ollama" })).unpriced, undefined);
+    assert.equal(toActivity(okRow({ model: "ollama_chat/qwen3:8b", custom_llm_provider: "" })).unpriced, undefined);
+    assert.equal(toActivity(okRow({ cache_hit: "True" })).unpriced, undefined);
+  });
+  it("요약에 가격 없는 호출 수와 모델을 센다", () => {
+    const items = [okRow(), okRow({ request_id: "r3" }), okRow({ request_id: "r4", spend: 0.001 })].map((r) => toActivity(r));
+    const sum = summarizeActivity(items);
+    assert.equal(sum.unpriced, 2);
+    assert.deepEqual(sum.unpriced_models, ["openai-a/gpt-6-luna"]);
   });
 });

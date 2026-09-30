@@ -157,7 +157,7 @@ export default {
       <td>${esc(it.team || "—")}</td>
       <td class="sec" style="font-size:12px">${esc(it.model || "")}</td>
       <td class="r num">${num(it.tokens)}</td>
-      <td class="r num">${it.ok ? money(it.spend) : "—"}</td>
+      <td class="r num">${it.ok ? (it.unpriced ? '<span class="tag warn" title="LiteLLM 가격표에 없는 모델이라 비용이 0 으로 기록됩니다. 예산이 줄지 않습니다.">가격 없음</span>' : money(it.spend)) : "—"}</td>
       <td class="r num muted">${it.duration_ms != null ? `${(it.duration_ms / 1000).toFixed(1)}s` : "—"}</td>
       <td class="num muted" style="font-size:11px">${esc(it.ip || "")}</td></tr>`).join("") || `<tr><td colspan="9" class="tbl-empty">${state.loaded.activity ? "조건에 맞는 호출이 없습니다." : "불러오는 중…"}</td></tr>`;
   },

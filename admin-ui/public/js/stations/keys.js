@@ -527,7 +527,10 @@ export default {
             const items = d.items || [];
             if (!items.length) { box.textContent = "최근 7일 호출이 없습니다."; return; }
             box.classList.remove("muted");
-            box.innerHTML = `<div class="stack" style="gap:5px">${items.map((it) => `<div class="row" style="gap:8px;flex-wrap:nowrap"><span class="led ${it.ok ? "good" : "crit"}"></span><span class="num muted nowrap">${esc(fmtDateTime(it.at))}</span><span class="nowrap">${esc(it.model || "")}</span><span class="${it.ok ? "muted" : ""}" style="margin-left:auto;text-align:right">${it.ok ? `${num(it.tokens)} tok · ${money(it.spend)}` : `<span class="tag crit">${esc(it.reason || "실패")}</span>`}</span></div>`).join("")}</div>`;
+            const denied = items.some((it) => it.reason_code === "model_denied");
+            const allowed = (cur.models || []).filter(Boolean);
+            box.innerHTML = `<div class="stack" style="gap:5px">${items.map((it) => `<div class="row" style="gap:8px;flex-wrap:nowrap"><span class="led ${it.ok ? "good" : "crit"}"></span><span class="num muted nowrap">${esc(fmtDateTime(it.at))}</span><span class="nowrap">${esc(it.model || "")}</span><span class="${it.ok ? "muted" : ""}" style="margin-left:auto;text-align:right">${it.ok ? `${num(it.tokens)} tok · ${it.unpriced ? '<span class="tag warn" title="LiteLLM 가격표에 없는 모델이라 비용이 0 으로 기록됩니다. 예산이 줄지 않습니다.">가격 없음</span>' : money(it.spend)}` : `<span class="tag crit" title="${esc(it.error || "")}">${esc(it.reason || "실패")}</span>`}</span></div>`).join("")}</div>
+              ${denied && allowed.length ? `<p class="help" style="margin:10px 0 0">이 키로 쓸 수 있는 모델 이름: ${allowed.map((m) => `<code>${esc(m)}</code>`).join(", ")}. 학생 코드의 <code>model</code> 값을 이 이름 그대로 쓰게 하세요.</p>` : ""}`;
           })
           .catch((e) => { b.querySelector("#d-calls").textContent = `호출 기록을 불러오지 못했습니다: ${e.message}`; });
         b.querySelector("#d-edit").onclick = () => { h.close(); self.openEdit(cur); };

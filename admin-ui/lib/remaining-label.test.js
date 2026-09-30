@@ -62,3 +62,12 @@ describe("rankValueText", () => {
     assert.equal(rankValueText(unlimited), money(0.55));
   });
 });
+
+describe("아주 작은 금액", () => {
+  it("1센트 미만은 유효 숫자 2자리까지 보인다", () => {
+    assert.equal(money(0.00035), "$0.00035");
+    assert.equal(money(0.0003), "$0.0003");
+    assert.equal(money(0.005), "$0.005");
+    assert.equal(money(0.042), "$0.042");
+  });
+});
