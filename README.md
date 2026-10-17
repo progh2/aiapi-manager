@@ -105,7 +105,17 @@ DSM 7.2 이상의 **Container Manager** 기준. DS918+ 등 x86 기종에서 동�
 7. **DSM 방화벽** — 방화벽을 켜 두었다면 제어판 → 보안 → 방화벽 규칙에 `LITELLM_PORT`(기본 4000)와 `ADMIN_UI_PORT`(3000) 허용을 더한다.
    litellm 은 학생 PC 의 실제 IP 를 기록하려고 NAS 네트워크에 직접 붙어 있어 방화벽 규칙을 따른다([학생 PC 의 실제 IP 기록](#학생-pc-의-실제-ip-기록)).
 8. **업데이트** — 저장소를 갱신(재업로드 또는 `git pull`)한 뒤 프로젝트 선택 → **동작 → 빌드**로 재빌드,
-   또는 SSH에서 `docker compose up -d --build`. 이걸 NAS 가 알아서 하게 하려면 [자동 업데이트](#자동-업데이트-nas)
+   또는 SSH에서 `cd /volume1/docker/aiapi-manager && sudo docker-compose up -d --build`
+   (시놀로지에는 `docker compose` 가 없고 하이픈 붙은 `docker-compose` 만 있는 경우가 많다). 이걸 NAS 가 알아서 하게 하려면 [자동 업데이트](#자동-업데이트-nas)
+9. **관리자 계정 추가** — `.env` 의 `ADMIN_EMAILS` 에 쉼표로 더한다(띄어쓰기 없이). 그다음 관리 화면 컨테이너를 **새로 만들어야** 읽는다.
+   그냥 "재시작"은 예전 값을 그대로 쓴다(새 관리자가 학생 조종석으로 열린다)
+   ```sh
+   cd /volume1/docker/aiapi-manager
+   sudo sed -i '/^ADMIN_EMAILS=/ s/$/,새관리자@학교.kr/' .env      # 또는 File Station 텍스트 편집기로 고친다
+   sudo docker-compose up -d --force-recreate admin-ui              # 화면으로는 프로젝트 → 동작 → 빌드
+   sudo docker exec aiapi-admin-ui printenv ADMIN_EMAILS             # 새 계정이 보이면 끝
+   ```
+   Firebase 설정은 바꾸지 않는다. 구글 로그인은 학교 워크스페이스 계정도 받고, 관리자인지는 이 목록으로만 정한다
 
 ## 자동 업데이트 (NAS)
 

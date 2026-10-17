@@ -86,6 +86,6 @@ curl -sS http://localhost:3000/health
 
 | 환경 | 설치 | 접속 | 비고 |
 |---|---|---|---|
-| Synology | README [설치 A](../README.md#설치-a-synology-nas-container-manager) | `http://NAS내부IP:3000` / `:4000` | SSH 예: `/volume1/docker/aiapi-manager`. Container Manager **동작 → 빌드** 또는 `docker compose up -d --build`. 주기 백업은 [postgres-backup.md](postgres-backup.md) Synology 절 |
+| Synology | README [설치 A](../README.md#설치-a-synology-nas-container-manager) | `http://NAS내부IP:3000` / `:4000` | SSH 예: `/volume1/docker/aiapi-manager`. Container Manager **동작 → 빌드** 또는 `sudo docker-compose up -d --build`(시놀로지는 하이픈 붙은 명령). 주기 백업은 [postgres-backup.md](postgres-backup.md) Synology 절 |
 | 일반 PC | README [설치 B](../README.md#설치-b-일반-pc--서버) | `http://localhost:3000` / `:4000` | Docker Desktop 또는 engine + compose. PC가 꺼지면 서비스도 꺼짐 |
 | tarho.local | 위 둘 중 해당 절 | 그 환경의 호스트/IP | 포트 충돌 시 `.env`의 `LITELLM_PORT` / `ADMIN_UI_PORT` |
