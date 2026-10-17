@@ -8,6 +8,7 @@ import { toast, toastError } from "./lib/ui.js";
 import { say } from "./lib/holo.js";
 import { createElfy } from "./lib/assistant.js";
 import { mountSecret } from "./lib/secret.js";
+import { openCodexSetup } from "./lib/codex.js";
 
 export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}, saveSettings = () => {} }) {
   const root = $("#pilot");
@@ -18,7 +19,8 @@ export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}
       <div class="hud-title"><span class="code">COCKPIT · 개인 조종석</span><span class="name">${esc(me.name)}님의 AI API</span></div>
       <div class="hud-spacer"></div>
       <div class="clock"><div class="t num" id="pl-clock">--:--:--</div><div class="d" id="pl-date"></div></div>
-      <div class="hud-actions"><div class="who"><span class="em">${esc(me.email)}</span><button class="icon-btn" id="pl-logout" type="button" title="로그아웃">${icon("exit")}</button></div></div>
+      <div class="hud-actions"><a class="btn sm" href="/guide/student.html" target="_blank" rel="noopener" id="pl-guide" title="그림으로 된 학생 안내서">${icon("help")}사용 안내서</a>
+        <div class="who"><span class="em">${esc(me.email)}</span><button class="icon-btn" id="pl-logout" type="button" title="로그아웃">${icon("exit")}</button></div></div>
     </header>
     <main class="stage"><section class="station active" style="transform:none">
       <div class="st-inner">
@@ -31,6 +33,7 @@ export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}
             <dl class="kv" style="font-size:13px"><dt>base_url</dt><dd><code>${esc(proxyUrl)}</code></dd><dt>model</dt><dd id="pl-model">—</dd></dl>
             <div class="snippet" style="margin-top:10px"><pre id="pl-snippet"></pre><button class="btn xs" type="button" id="pl-copy">${icon("copy")}복사</button></div>
             <div class="row" style="margin-top:8px"><button class="btn sm primary" type="button" id="pl-copy-mine" hidden>${icon("copy")}내 키 넣어 코드 복사</button>
+              <button class="btn sm" type="button" id="pl-codex" hidden title="Codex 데스크탑 앱에서 학교 키를 쓰도록 설정">${icon("gear")}Codex 설정</button>
               <p class="help" id="pl-key-help" style="margin:0;flex:1">내 키는 아래 <b>내 키</b> 카드에서 마우스를 올리면 보이고, 복사 버튼으로 복사해요.</p></div>
           </section>
         </div>
@@ -113,6 +116,9 @@ export async function startPilot({ api, me, auth, proxyUrl, scene, settings = {}
     const mine = keys.find((k) => k.secret_available && ["active", "warn"].includes(keyState(k, now).code)) || keys.find((k) => k.secret_available);
     const copyMine = $("#pl-copy-mine");
     copyMine.hidden = !mine;
+    const codex = $("#pl-codex");
+    codex.hidden = !keys.some((k) => k.secret_available);
+    codex.onclick = () => openCodexSetup({ proxyUrl, keys, reveal: (alias) => revealMine(alias, "copy") });
     if (mine) {
       copyMine.title = `${mine.key_alias} 키가 들어간 코드를 복사합니다`;
       copyMine.onclick = async () => {

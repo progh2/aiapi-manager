@@ -34,7 +34,7 @@ export default {
       <div class="st-inner">
         <div class="st-head">
           <div class="ttl"><div class="code">STATION 07 · CREW</div><h1>사용자</h1>
-            <p>여기 등록한 구글 계정만 로그인합니다. 학생·교사는 연결된 키의 사용량과 최근 호출만 보고, 키 문자열은 보지 못합니다. 관리자는 <code>.env</code> 의 <code>ADMIN_EMAILS</code> 입니다.</p></div>
+            <p>여기 등록한 구글 계정만 로그인합니다. 학생·교사는 연결된 키의 사용량·최근 호출과 <b>자기 키</b>(가려진 채, 마우스를 올리거나 복사할 때만)를 봅니다. 관리자는 <code>.env</code> 의 <code>ADMIN_EMAILS</code> 입니다.</p></div>
           <div class="tools"><button class="btn primary" type="button" id="cr-new">${icon("plus")}사용자 등록</button></div>
         </div>
         <section class="panel">
@@ -78,7 +78,7 @@ export default {
         <label class="field"><span>구글 이메일 <span class="req">*</span></span><input id="u-email" type="email" value="${esc(u ? u.email : "")}" ${editing ? "readonly" : "autofocus"} placeholder="student@school.edu"></label>
         <label class="field"><span>이름</span><input id="u-name" value="${esc(u ? u.name : "")}" placeholder="홍길동"></label>
       </div>
-      <div class="field" style="margin-top:12px"><span>연결할 키 별칭</span><div id="u-aliases"></div><span class="hint">연결한 키의 사용량·최근 호출만 보입니다.</span></div>`;
+      <div class="field" style="margin-top:12px"><span>연결할 키 별칭</span><div id="u-aliases"></div><span class="hint">연결한 키의 사용량·최근 호출과 키(보관된 경우)가 그 사람 조종석에 보입니다.</span></div>`;
     modal({
       title: editing ? `사용자 수정 — ${u.email}` : "사용자 등록", code: editing ? "CREW · EDIT" : "CREW · ENLIST", body, size: "wide",
       onOpen: (h) => { h.picker = aliasPicker(h.el.querySelector("#u-aliases"), u ? u.key_aliases || [] : []); },

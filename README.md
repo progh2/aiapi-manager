@@ -225,6 +225,29 @@ docker compose up -d --build
   그 주소를 Firebase 승인된 도메인에도 추가한다. PC가 꺼지면 서비스도 꺼지므로 상시 운영은 NAS 쪽을 권장.
 - 중지: `docker compose down` / 로그 확인: `docker compose logs -f litellm`
 
+## 그림 안내서 (학생·선생님용)
+
+처음 쓰는 학생·선생님을 위한 **그림 안내서**가 관리 화면에 함께 들어 있다. 로그인 없이 열린다.
+
+| 주소 | 내용 |
+|---|---|
+| `http://NAS:3000/guide/` | 첫 화면 — 요청이 지나가는 길, 낱말 풀이 |
+| `http://NAS:3000/guide/student.html` | 학생 — 로그인 → 내 키 보기·복사 → 파이썬 → Codex 앱 → 안 될 때(막힌 이유별 해결) → 지킬 것 |
+| `http://NAS:3000/guide/teacher.html` | 선생님 — 키 나눠 주기 → 학생에게 알리기 → 충전·연장 → 시간표·차단·봉쇄 → 실패 이유 → 엘피 → 관리(관리자 추가·자동 업데이트·백업) |
+
+- 로그인 화면, 학생 조종석의 **사용 안내서** 버튼, 관리 화면 도움말(`?`)·명령 팔레트(`Ctrl+K` → "안내서"), **08 기록 → 학생 접속 안내**에서 연다. 학생에게 알릴 주소 두 개(로그인 주소·학생 안내서)는 08 기록에서 복사한다
+- 예제 코드의 주소는 이 서버 설정으로 채운다(`/guide/config.json` — `PUBLIC_PROXY_URL`, 없으면 접속한 주소 + `LITELLM_PORT`)
+- 그림은 흉내 서버에서 찍어 노란 상자와 번호를 그린 것이다. 화면이 바뀌면 다시 찍는다:
+
+  ```sh
+  cd admin-ui && npm run mock          # 다른 창에서 띄워 둔다
+  docker run --rm --network host -e CHROMIUM_FLAGS= \
+    -v "$PWD/scripts/guide-shots.js:/usr/src/app/guide-shots.js:ro" -v "$PWD/public/guide/img:/shots" \
+    zenika/alpine-chrome:with-puppeteer node guide-shots.js      # 일부만: -e ONLY=s3-key,t2-launch
+  ```
+
+<img src="admin-ui/public/guide/img/s3-key.webp" width="300" alt="학생 조종석의 내 키 카드 — 마우스를 올리면 보이고 복사 버튼으로 복사"> <img src="admin-ui/public/guide/img/s5-codex.webp" width="420" alt="조종석의 Codex 설정 창">
+
 ## 관리 화면 둘러보기 (관제 함교)
 
 ![개요 — 3D 궤도 관제도와 함선 상태·경보·예측](docs/screenshots/01-bridge.webp)
@@ -410,6 +433,11 @@ ollama pull qwen3:8b        # 또는 gemma4, qwen3:30b 등
    - 학생이 키를 처음 보거나 복사하면 **08 기록 → 작업 기록**에 "키 확인"으로 남는다
 3. 이 기능 전에 만든 키는 원문이 없어 학생 화면에 보이지 않는다. **03 키 관리 → 상태 "학생 화면에 안 보이는 키"** 로 골라 **새 키로 교체**하면 된다(옛 키는 막히니 학생에게 새 키로 바꿔 넣으라고 알린다)
 4. 이미 만든 키에 계정만 붙이려면 같은 명단(이메일 칸 포함)으로 다시 일괄 발급한다. 이미 있는 별칭은 새로 만들지 않고 계정만 연결한다. 한 명씩은 **07 사용자**에서 연결한다
+
+**Codex 앱에서 학교 키 쓰기** — 조종석 **[Codex 설정]** 이 키·모델·Windows/Mac 에 맞는 한 줄 명령을 만들어 준다(화면에는 키를 가리고, 복사할 때만 넣는다).
+PowerShell·터미널에 붙여 넣으면 `~/.codex/config.toml`(학교 프록시를 `model_provider` 로, `base_url = <PUBLIC_PROXY_URL>/v1`, `wire_api = "responses"`, `env_key = "AIAPI_KEY"`)과
+`~/.codex/.env`(`AIAPI_KEY=…`)를 쓰고, 원래 설정은 `config.toml.bak` 으로 남긴다. Codex 의 "API 키로 로그인" 칸에 학교 키를 넣으면 OpenAI 로 가서 거절된다.
+자세한 순서는 학생 안내서의 Codex 절에 있다.
 
 **보관 방식** — LiteLLM 은 키 원문을 저장하지 않으므로, 관리 서버가 발급 응답의 원문을 `admin-ui/data/key-vault.json` 에 AES-256-GCM 으로 암호화해 둔다.
 비밀 값은 `.env` 의 `KEY_VAULT_SECRET`(비우면 `LITELLM_MASTER_KEY`). 비밀 값을 바꾸면 보관한 키는 풀리지 않으니 새 키로 교체한다.
@@ -609,6 +637,7 @@ resp = client.chat.completions.create(model="gpt-4o-mini", messages=[...])
 
 예산이 소진되면 요청이 자동 차단된다. 사용량과 막힌 이유는 관리 화면(학생은 등록 사용자 조종석)에서 본다.
 접속 주소와 예제 코드는 관리 화면 **기록 → 학생 접속 안내**에서 복사하거나 인쇄한다.
+학생에게는 그림 안내서 `http://NAS:3000/guide/student.html` 을 알려 주면 로그인·키 복사·파이썬·Codex·문제 해결을 스스로 따라 할 수 있다.
 
 
 ## Postgres 백업·복구
@@ -620,7 +649,7 @@ NAS/PC에서 키·조 UI까지 재확인하는 순서는 [docs/nas-pc-recheck.md
 
 - 실제 OpenAI 키와 마스터 키는 `.env`에만 존재하며 git에 커밋하지 않는다 (`.gitignore` 처리됨).
 - Postgres는 NAS 자신(`127.0.0.1`)에만 포트를 연다. 학교 망에서는 닿지 않는다. litellm 은 호스트 네트워크에서 이 포트로 붙는다.
-- admin-ui는 Firebase ID 토큰을 서버에서 검증한다. `ADMIN_EMAILS`는 관리자이고, 그 외는 `admin-ui/data/users.json`에 등록된 구글 계정만 로그인할 수 있다. 등록 사용자는 연결된 키의 사용량만 본다.
+- admin-ui는 Firebase ID 토큰을 서버에서 검증한다. `ADMIN_EMAILS`는 관리자이고, 그 외는 `admin-ui/data/users.json`에 등록된 구글 계정만 로그인할 수 있다. 등록 사용자는 연결된 키의 사용량·최근 호출과 자기 키(보관된 경우, 가려진 채)만 본다.
 - 키 발급에는 예산이 필요하다. 모델을 비우면 `gpt-4o-mini`만 연다. 이미 있는 별칭은 다시 만들지 않는다.
 - 사용량 날짜는 한국 시간이다. 학급 예산 소진 예상은 학급을 합치지 않고 가장 빨리 끝나는 학급을 보여 준다.
 - 관리 작업은 `admin-ui/data/audit.jsonl` 에 남는다. 키 비밀값·공급자 비밀 키는 기록하지 않는다.

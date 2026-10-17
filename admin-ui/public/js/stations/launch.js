@@ -33,7 +33,7 @@ export default {
       <div class="st-inner">
         <div class="st-head">
           <div class="ttl"><div class="code">STATION 05 · LAUNCH BAY</div><h1>키 발급</h1>
-            <p>새 키의 비밀값은 <b>발급 직후 한 번만</b> 보입니다. 결과 화면에서 CSV 를 받거나 학생 안내문을 인쇄하세요. 이미 있는 별칭은 다시 만들지 않습니다.</p></div>
+            <p>명단에 <b>이메일</b>을 넣으면 학생이 그 구글 계정으로 로그인해 <b>자기 키를 직접 보고 복사</b>합니다. 키는 암호화해 보관되어 <b>03 키 관리 → 상세</b>에서도 다시 볼 수 있습니다. 이미 있는 별칭은 다시 만들지 않습니다(학급 일괄에 이메일이 있으면 계정만 연결).</p></div>
         </div>
         <div class="tabs" role="tablist">${TABS.map(([id, code, label]) => `<button class="tab" role="tab" type="button" data-tab="${id}" aria-selected="false"><span class="code">${code}</span>${label}</button>`).join("")}</div>
         <div data-pane="bulk"></div>

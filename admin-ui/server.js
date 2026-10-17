@@ -96,6 +96,10 @@ app.get("/roster.js", (_req, res) => {
 app.get("/key-revoke.js", (_req, res) => {
   res.type("application/javascript").sendFile(__dirname + "/lib/key-revoke.js");
 });
+// 그림 안내서(/guide/)가 이 학교의 실제 주소로 예제를 채우게 한다. 로그인 전에도 보이는 값(접속 주소)만 준다.
+app.get("/guide/config.json", (_req, res) => {
+  res.set("Cache-Control", "no-store").json({ proxy_url: PUBLIC_PROXY_URL || null, proxy_port: Number(LITELLM_PORT) || 4000 });
+});
 
 // Compose healthcheck용. 인증 없이 프로세스 생존만 확인.
 app.get("/health", (_req, res) => {

@@ -233,7 +233,17 @@ export default {
     this.guideModel = sel;
     const lang = this.guideLang || "python";
     const code = lang === "js" ? snippetJs(proxy, sel) : lang === "curl" ? snippetCurl(proxy, sel) : snippetPython(proxy, sel);
+    const loginUrl = location.origin;
+    const guideUrl = `${location.origin}/guide/student.html`;
     $("#gd-body").innerHTML = `
+      <section class="panel" style="margin-bottom:14px"><div class="panel-h"><span class="code">BRIEFING</span><h2>학생에게 알려 줄 것은 두 가지</h2>
+          <span class="end"><a class="btn sm" href="/guide/teacher.html" target="_blank" rel="noopener">${icon("help")}선생님 안내서</a></span></div>
+        <div class="grid g2">
+          <div><div class="keybox-lbl">① 로그인 주소 — 학교 구글 계정으로 로그인하면 자기 키가 보여요</div><div class="row"><code class="gd-url">${esc(loginUrl)}</code><button class="btn xs" type="button" data-copy="${esc(loginUrl)}">${icon("copy")}복사</button></div></div>
+          <div><div class="keybox-lbl">② 그림으로 된 학생 안내서 — 키 보기·파이썬·Codex·안 될 때</div><div class="row"><code class="gd-url">${esc(guideUrl)}</code><button class="btn xs" type="button" data-copy="${esc(guideUrl)}">${icon("copy")}복사</button><a class="btn xs" href="${esc(guideUrl)}" target="_blank" rel="noopener">열기</a></div></div>
+        </div>
+        <p class="help" style="margin:10px 0 0">학생 계정은 <b>05 키 발급</b> 명단에 이메일 칸을 넣으면 함께 등록됩니다. 아래 <b>안내문 인쇄</b>에도 두 주소가 들어갑니다.</p>
+      </section>
       <div class="grid g2">
         <section class="panel"><div class="panel-h"><span class="code">ACCESS</span><h2>접속 정보</h2></div>
           <dl class="kv" style="font-size:13px"><dt>base_url</dt><dd><code>${esc(proxy)}</code></dd><dt>API 키</dt><dd>발급받은 가상 키 (<code>sk-…</code>)</dd><dt>model</dt><dd><select id="gd-model" style="width:auto">${models.map((m) => `<option ${m === sel ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></dd></dl>
@@ -248,8 +258,9 @@ export default {
     $("#gd-model").onchange = (ev) => { this.guideModel = ev.target.value; this.renderGuide(); };
     $("#gd-lang").onclick = (ev) => { const b = ev.target.closest("[data-lang]"); if (b) { this.guideLang = b.dataset.lang; this.renderGuide(); } };
     $("#gd-copy").onclick = async () => toast((await copyText(code)) ? "예제 코드를 복사했습니다" : "복사하지 못했습니다", { tone: "good" });
+    for (const b of $("#gd-body").querySelectorAll("[data-copy]")) b.onclick = async () => toast((await copyText(b.dataset.copy)) ? "주소를 복사했습니다" : "복사하지 못했습니다", { tone: "good" });
     $("#gd-print").onclick = () => {
-      $("#print-root").innerHTML = `<div class="p-sheet"><h1>AI API 접속 안내</h1><p>접속 주소 <b>${esc(proxy)}</b> · 모델 <b>${esc(sel)}</b> · 키는 선생님께 받은 값을 넣으세요.</p><pre style="font-size:10pt;background:#f4f4f4;padding:10pt">${esc(snippetPython(proxy, sel))}</pre><pre style="font-size:10pt;background:#f4f4f4;padding:10pt">${esc(snippetJs(proxy, sel))}</pre></div>`;
+      $("#print-root").innerHTML = `<div class="p-sheet"><h1>AI API 접속 안내</h1><p>① <b>${esc(loginUrl)}</b> 에 학교 구글 계정으로 로그인하면 내 키를 보고 복사할 수 있어요.<br>② 그림 안내서: <b>${esc(guideUrl)}</b></p><p>코드의 접속 주소 <b>${esc(proxy)}</b> · 모델 <b>${esc(sel)}</b></p><pre style="font-size:10pt;background:#f4f4f4;padding:10pt">${esc(snippetPython(proxy, sel))}</pre><pre style="font-size:10pt;background:#f4f4f4;padding:10pt">${esc(snippetJs(proxy, sel))}</pre></div>`;
       window.print();
     };
   },
