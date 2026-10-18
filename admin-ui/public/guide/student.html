@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>학생 안내서 · AIAPI</title>
+  <link rel="icon" href="/mascot/holo/elf-welcome.webp">
+  <link rel="stylesheet" href="/css/fonts.css">
+  <link rel="stylesheet" href="/guide/guide.css">
+</head>
+<body>
+  <header class="g-top">
+    <a class="g-brand" href="/guide/"><img src="/mascot/holo/elf-welcome.webp" alt=""><b>AIAPI</b><span>사용 안내서</span></a>
+    <nav aria-label="안내서">
+      <a href="/guide/">처음</a>
+      <a href="/guide/student.html" aria-current="page">학생</a>
+      <a href="/guide/teacher.html">선생님</a>
+      <a href="/">로그인 화면 →</a>
+    </nav>
+    <button class="g-btn no-print" type="button" data-print>인쇄</button>
+  </header>
+
+  <div class="g-wrap">
+    <aside class="g-toc" aria-label="목차"><div class="lbl">CONTENTS</div><ol></ol></aside>
+    <main>
+      <div class="g-hero">
+        <div>
+          <div class="g-kicker">FOR STUDENTS</div>
+          <h1>학생 안내서</h1>
+          <p class="g-lead">선생님이 만들어 준 <b>학교 키</b>로 파이썬 코드나 Codex 앱에서 AI 를 불러 써요. 그림을 보면서 순서대로 따라 하면 돼요.</p>
+        </div>
+        <img src="/mascot/holo/elf-usage.webp" alt="">
+      </div>
+
+      <div class="box note">
+        <p><b>준비물</b></p>
+        <p>· 선생님이 등록한 <b>학교 구글 계정</b><br>
+           · <b>학교 안</b> 인터넷(학교 와이파이·컴퓨터실) — 집이나 구글 코랩(Colab)에서는 연결되지 않아요<br>
+           · 파이썬으로 쓸 때는 내 컴퓨터에 설치된 Python 3 (VS Code·주피터도 좋아요)</p>
+      </div>
+
+      <section class="g-sec" id="login">
+        <h2><span class="no">1</span>로그인하기</h2>
+        <ol class="steps">
+          <li><b>크롬이나 엣지를 열고 주소를 입력해요</b>
+            주소창에 <code data-fill="site">http://학교서버주소:3000</code> 을 입력하고 Enter 를 눌러요.</li>
+          <li><b><span class="n">1</span> [Google 계정으로 승선] 을 눌러요</b>
+            작은 창이 뜨면 선생님이 등록한 <b>학교 구글 계정</b>을 골라요.</li>
+          <li><b>내 조종석이 열려요</b>
+            “○○님의 AI API” 화면이 나오면 성공이에요. 처음이라면 <span class="n">2</span> 안내서 링크로 이 페이지를 다시 열 수 있어요.</li>
+        </ol>
+        <figure class="shot"><img src="/guide/img/s1-login.webp" alt="로그인 화면. 1번은 Google 계정으로 승선 버튼, 2번은 사용 안내서 링크" loading="lazy" width="1600" height="950">
+          <figcaption>로그인 화면 — <span class="n">1</span> 로그인 버튼 · <span class="n">2</span> 이 안내서로 가는 링크</figcaption></figure>
+        <div class="box warn">
+          <p><b>“등록되지 않은 계정” 이라고 나와요</b> — 다른 구글 계정(개인 계정)으로 로그인했거나, 아직 등록되지 않은 거예요. 오른쪽 위에서 계정을 바꾸거나, 선생님께 <b>내 학교 이메일 주소</b>를 알려 드리세요.</p>
+        </div>
+      </section>
+
+      <section class="g-sec" id="cockpit">
+        <h2><span class="no">2</span>내 화면(조종석) 둘러보기</h2>
+        <p>로그인하면 나만 보는 <b>조종석</b>이 열려요. 여기서 내 키, 남은 예산, 최근 호출 결과를 모두 볼 수 있어요.</p>
+        <figure class="shot"><img src="/guide/img/s2-cockpit.webp" alt="학생 조종석 전체 화면에 번호 1부터 4까지 표시" loading="lazy" width="1600" height="1250">
+          <figcaption>학생 조종석 — 번호를 아래 설명과 맞춰 보세요</figcaption></figure>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>번호</th><th>무엇인가요?</th></tr></thead>
+          <tbody>
+            <tr><td><span class="n">1</span></td><td><b>남은 예산 · 지금 쓸 수 있는 키</b> — 돈이 얼마 남았는지, 지금 수업 시간이라 호출할 수 있는지 한눈에 보여요.</td></tr>
+            <tr><td><span class="n">2</span></td><td><b>접속 안내</b> — 코드에 넣을 서버 주소(<code>base_url</code>)와 모델 이름, 예제 코드가 있어요. <b>[내 키 넣어 코드 복사]</b>와 <b>[Codex 설정]</b> 버튼도 여기 있어요.</td></tr>
+            <tr><td><span class="n">3</span></td><td><b>내 키</b> — 가려진 API 키와 쓸 수 있는 모델, 사용 시간, 만료일이 나와요.</td></tr>
+            <tr><td><span class="n">4</span></td><td><b>사용 안내서</b> — 언제든 이 안내서를 다시 열어요.</td></tr>
+          </tbody>
+        </table></div>
+        <p class="small muted">화면을 아래로 내리면 날짜별 사용량 그래프와 <b>최근 호출</b> 표가 있어요(<a href="#trouble">6. 안 될 때</a>에서 자세히 봐요).</p>
+      </section>
+
+      <section class="g-sec" id="key">
+        <h2><span class="no">3</span>내 키 보고 복사하기</h2>
+        <p>API 키는 평소에 <code>sk-••••••••7Q2x</code> 처럼 가려져 있어요. 옆 사람이 화면을 봐도 키가 새지 않게 하려는 거예요.</p>
+        <figure class="shot narrow" style="--w:566px"><img src="/guide/img/s3-key.webp" alt="내 키 카드. 1번 마우스를 올리면 키가 보임, 2번 눈 버튼, 3번 복사 버튼" loading="lazy" width="566" height="550">
+          <figcaption>내 키 카드 — 마우스를 올린 동안만 키가 보여요</figcaption></figure>
+        <ol class="steps">
+          <li><b><span class="n">1</span> 키 위에 마우스를 올려요</b> 올리고 있는 동안만 진짜 키가 보여요. 마우스를 치우면 다시 가려져요.</li>
+          <li><b><span class="n">2</span> 터치 화면(태블릿)이라면 눈 버튼을 눌러요</b> 10초 동안 보였다가 저절로 가려져요.</li>
+          <li><b><span class="n">3</span> [복사] 를 눌러요</b> 키가 복사돼요. 코드의 <code>api_key="…"</code> 자리에 붙여 넣어요(Ctrl+V, Mac 은 ⌘+V).</li>
+        </ol>
+        <div class="box danger">
+          <p><b>키는 비밀번호와 같아요</b></p>
+          <p>· 친구에게 보내거나 단톡방·블로그에 올리지 않아요. 남이 쓰면 <b>내 예산</b>이 줄고 기록에도 <b>내 키</b>로 남아요.<br>
+             · 깃허브(GitHub)에 코드를 올릴 때는 키를 꼭 지워요. 올라간 키는 몇 분 만에 다른 사람에게 발견될 수 있어요.<br>
+             · 키가 새어 나간 것 같으면 바로 선생님께 말씀드리세요. 옛 키를 막고 새 키로 바꿔 주세요.</p>
+        </div>
+        <div class="box note">
+          <p>키를 보거나 복사하면 <b>언제 봤는지</b>가 선생님 화면 기록에 남아요(키 내용은 남지 않아요).</p>
+        </div>
+        <div class="box warn">
+          <p><b>“선생님이 이 기능 전에 만든 키라 여기서 볼 수 없어요” 가 나와요</b> — 선생님께 <b>새 키로 교체</b>를 부탁하세요. 교체하면 이 화면에서 바로 보여요(옛 키는 더 이상 쓸 수 없으니 코드에서도 새 키로 바꿔요).</p>
+        </div>
+      </section>
+
+      <section class="g-sec" id="python">
+        <h2><span class="no">4</span>파이썬에서 쓰기</h2>
+        <p>OpenAI 공식 파이썬 라이브러리를 그대로 써요. 다른 점은 <b>서버 주소(<code>base_url</code>)를 학교 AI 서버로</b> 바꾸는 것 하나뿐이에요.</p>
+        <figure class="shot narrow" style="--w:754px"><img src="/guide/img/s4-code.webp" alt="접속 안내 칸. 1번 base_url, 2번 모델, 3번 내 키 넣어 코드 복사 버튼, 4번 Codex 설정 버튼" loading="lazy" width="754" height="591">
+          <figcaption>조종석의 접속 안내 — <span class="n">3</span> 을 누르면 내 키가 들어간 코드가 통째로 복사돼요</figcaption></figure>
+
+        <ol class="steps">
+          <li><b>openai 라이브러리를 설치해요 (처음 한 번)</b>
+            Windows 는 <b>PowerShell</b>(시작 메뉴에서 PowerShell 검색), Mac 은 <b>터미널</b>을 열고 입력해요.
+            <div class="code"><span class="lang">TERMINAL</span><pre>pip install openai</pre></div>
+            <span class="small muted"><code>pip</code> 를 찾을 수 없다고 나오면 <code>python -m pip install openai</code> (Mac 은 <code>python3 -m pip install openai</code>) 로 해 보세요.</span></li>
+          <li><b>조종석에서 <span class="n">3</span> [내 키 넣어 코드 복사] 를 눌러요</b>
+            내 키와 모델 이름이 이미 들어간 예제 코드가 복사돼요.</li>
+          <li><b>새 파일 <code>hello_ai.py</code> 에 붙여 넣고 저장해요</b>
+            복사된 코드는 아래와 같은 모양이에요(키 자리에 진짜 키가 들어 있어요).
+            <div class="code"><span class="lang">PYTHON</span><pre>from openai import OpenAI
+
+client = OpenAI(
+    api_key="여기에_내_키",
+    base_url="__PROXY__",
+)
+resp = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "안녕하세요!"}],
+)
+print(resp.choices[0].message.content)</pre></div></li>
+          <li><b>실행해요</b>
+            <div class="code"><span class="lang">TERMINAL</span><pre>python hello_ai.py</pre></div>
+            AI 의 대답이 출력되면 성공이에요! 🎉 조종석의 <b>최근 호출</b> 표에도 방금 호출이 “성공”으로 나와요.</li>
+        </ol>
+        <div class="box tip">
+          <p><b>모델 이름</b>은 내 키 카드의 <b>쓸 수 있는 모델</b> 중 하나를 그대로 써야 해요. 다른 이름을 쓰면 “허용 안 된 모델” 로 막혀요.</p>
+        </div>
+
+        <h3>한 걸음 더 ① 계속 대화하기</h3>
+        <p>질문과 답을 <code>messages</code> 에 쌓아 보내면 AI 가 앞 대화를 기억해요. 빈 줄을 입력하면 끝나요.</p>
+        <div class="code"><span class="lang">PYTHON</span><pre>from openai import OpenAI
+
+client = OpenAI(api_key="여기에_내_키", base_url="__PROXY__")
+messages = [{"role": "system", "content": "너는 친절한 파이썬 선생님이야. 짧게 답해."}]
+
+while True:
+    question = input("나: ")
+    if not question:
+        break
+    messages.append({"role": "user", "content": question})
+    resp = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
+    answer = resp.choices[0].message.content
+    print("AI:", answer)
+    messages.append({"role": "assistant", "content": answer})</pre></div>
+        <div class="box warn"><p>대화가 길어질수록 앞 대화를 매번 다시 보내서 <b>토큰(예산)을 점점 더 많이</b> 써요. 주제가 바뀌면 프로그램을 다시 시작하세요.</p></div>
+
+        <h3>한 걸음 더 ② 키를 코드 밖에 두기</h3>
+        <p>코드를 친구에게 보여 주거나 깃허브에 올릴 일이 있다면, 키를 코드에 쓰지 말고 <b>환경 변수</b>에 넣어 두세요.</p>
+        <div class="os" role="tablist"><button type="button" data-os="windows">Windows</button><button type="button" data-os="mac">Mac</button></div>
+        <div data-os-only="windows"><div class="code"><span class="lang">POWERSHELL</span><pre>$env:AIAPI_KEY = "여기에_내_키"
+python hello_ai.py</pre></div></div>
+        <div data-os-only="mac" hidden><div class="code"><span class="lang">TERMINAL</span><pre>export AIAPI_KEY="여기에_내_키"
+python3 hello_ai.py</pre></div></div>
+        <div class="code"><span class="lang">PYTHON</span><pre>import os
+from openai import OpenAI
+
+client = OpenAI(api_key=os.environ["AIAPI_KEY"], base_url="__PROXY__")</pre></div>
+        <p class="small muted">이렇게 넣은 환경 변수는 그 PowerShell·터미널 창을 닫으면 사라져요. 창을 새로 열면 다시 넣어요.</p>
+      </section>
+
+      <section class="g-sec" id="codex">
+        <h2><span class="no">5</span>Codex 앱에서 쓰기</h2>
+        <p><b>Codex</b> 는 OpenAI 가 만든 코딩 도우미예요(데스크탑 앱과 터미널용 Codex CLI). 원래는 OpenAI 계정으로 쓰지만, <b>설정 파일 두 개</b>를 만들면 학교 키로 쓸 수 있어요. 조종석의 <b>[Codex 설정]</b> 버튼이 그 파일을 만드는 명령을 대신 써 줘요.</p>
+        <div class="box warn">
+          <p><b>Codex 의 “API 키로 로그인” 칸에 학교 키를 넣으면 안 돼요.</b> 그 칸은 OpenAI 서버로 바로 가기 때문에 학교 키를 몰라서 거절돼요. 아래 순서대로 학교 서버 주소를 알려 줘야 해요.</p>
+        </div>
+        <figure class="shot"><img src="/guide/img/s5-codex.webp" alt="Codex 설정 창. 1번 쓸 키, 2번 모델, 3번 Windows 또는 Mac, 4번 명령 복사 버튼" loading="lazy" width="1140" height="978">
+          <figcaption>조종석 → [Codex 설정] 을 누르면 나오는 창</figcaption></figure>
+        <ol class="steps">
+          <li><b>Codex 앱이 깔려 있는지 확인해요</b> 깔려 있지 않다면 선생님 안내에 따라 먼저 설치해요. 설치 후 한 번 켰다가 꺼 두세요.</li>
+          <li><b>조종석의 [Codex 설정] 을 눌러요</b> 접속 안내 칸에 있어요(<a href="#python">4번 그림</a>의 <span class="n">4</span>).</li>
+          <li><b><span class="n">1</span> 쓸 키, <span class="n">2</span> 모델, <span class="n">3</span> 내 컴퓨터(Windows/Mac) 를 골라요</b></li>
+          <li><b><span class="n">4</span> [명령 복사] 를 눌러요</b> 화면에는 키가 가려져 보이지만, 복사된 명령에는 진짜 키가 들어 있어요.</li>
+          <li><b>PowerShell 또는 터미널을 열어요</b>
+            <div class="os" role="tablist"><button type="button" data-os="windows">Windows</button><button type="button" data-os="mac">Mac</button></div>
+            <div data-os-only="windows">키보드의 <kbd>Win</kbd> 키를 누르고 <b>PowerShell</b> 을 입력해 Enter. 관리자 권한은 필요 없어요.</div>
+            <div data-os-only="mac" hidden><kbd>⌘</kbd>+<kbd>Space</kbd> 를 누르고 <b>터미널</b> 을 입력해 Enter.</div></li>
+          <li><b>붙여 넣고 Enter 를 눌러요</b>
+            Windows 는 마우스 오른쪽 클릭이나 <kbd>Ctrl</kbd>+<kbd>V</kbd>, Mac 은 <kbd>⌘</kbd>+<kbd>V</kbd>. 여러 줄을 붙여 넣는다는 경고가 나오면 <b>그래도 붙여넣기</b>를 골라요.
+            <code>Codex settings saved. Restart the Codex app.</code> 이 보이면 성공이에요.</li>
+          <li><b>Codex 앱을 완전히 끄고 다시 켜요</b>
+            창만 닫지 말고 완전히 종료해요(Windows 는 작업 표시줄 아이콘 오른쪽 클릭 → 종료, Mac 은 <kbd>⌘</kbd>+<kbd>Q</kbd>). 새 작업에서 “안녕” 하고 보내 보세요. 답이 오고 조종석 <b>최근 호출</b>에 기록이 생기면 끝!</li>
+        </ol>
+        <div class="box tip">
+          <p>터미널용 <b>Codex CLI</b>(<code>codex</code> 명령)도 같은 설정 파일을 써요. 앱이 잘 안 될 때 터미널에서 <code>codex</code> 로 먼저 확인해 보면 원인을 찾기 쉬워요.</p>
+        </div>
+
+        <h3>명령 대신 파일을 직접 만들고 싶다면</h3>
+        <p>설정 폴더에 아래 두 파일을 만들어요. 폴더는 Windows 는 <code>C:\Users\내이름\.codex</code>, Mac 은 <code>~/.codex</code> 예요(없으면 만들어요).</p>
+        <div class="code"><span class="lang">config.toml</span><pre># AIAPI (school AI API) - Codex sends requests to the school proxy
+model = "gpt-4o-mini"
+model_provider = "school"
+
+[model_providers.school]
+name = "AIAPI school"
+base_url = "__BASE__"
+env_key = "AIAPI_KEY"
+wire_api = "responses"</pre></div>
+        <div class="code"><span class="lang">.env</span><pre>AIAPI_KEY=여기에_내_키</pre></div>
+        <ul>
+          <li><code>model</code> 은 내 키 카드의 <b>쓸 수 있는 모델</b> 중 하나로 바꿔요.</li>
+          <li>메모장으로 저장할 때는 <b>파일 형식: 모든 파일</b>을 골라야 이름 뒤에 <code>.txt</code> 가 붙지 않아요.</li>
+          <li>설정 파일에는 한글을 넣지 마세요(파일이 깨져 Codex 가 읽지 못할 수 있어요).</li>
+        </ul>
+
+        <h3>원래대로 되돌리기</h3>
+        <p>OpenAI 계정으로 다시 쓰고 싶으면 설정 폴더의 <code>config.toml</code> 을 지우세요. 전에 쓰던 설정이 있었다면 <code>config.toml.bak</code> 으로 남아 있으니 이름을 <code>config.toml</code> 로 바꾸면 돼요.</p>
+
+        <h3>Codex 가 안 될 때</h3>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>이런 일이 생기면</th><th>이렇게 해 보세요</th></tr></thead>
+          <tbody>
+            <tr><td>“허용 안 된 모델” · model not allowed</td><td><code>config.toml</code> 의 <code>model</code> 이 내 키의 <b>쓸 수 있는 모델</b>과 글자 하나까지 같은지 봐요.</td></tr>
+            <tr><td>401 · 잘못된 키 · Unauthorized</td><td>[Codex 설정] 에서 명령을 다시 복사해 실행해요. 직접 만들었다면 <code>.env</code> 에 빈칸이나 따옴표가 없는지 봐요.</td></tr>
+            <tr><td>연결할 수 없음 · Connection error</td><td>학교 와이파이인지 확인해요. 브라우저로 <code data-fill="proxy">http://학교서버주소:4000</code> 이 열리는지 봐요.</td></tr>
+            <tr><td>설정했는데 여전히 OpenAI 로그인만 나와요</td><td>Codex 를 <b>완전히</b> 끄고 다시 켜요. 그래도 그러면 터미널에서 <code>codex</code> 로 확인하고, 선생님께 화면을 보여 주세요.</td></tr>
+            <tr><td>예산이 금방 줄어요</td><td>Codex 는 한 번 부탁할 때 여러 번 생각하고 파일을 읽느라 토큰을 많이 써요. 부탁을 작고 분명하게 나눠요.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section class="g-sec" id="trouble">
+        <h2><span class="no">6</span>호출이 안 될 때</h2>
+        <p>막힌 호출은 조종석 아래쪽 <b>최근 호출</b> 표에 <span class="tag">빨간 이유</span> 로 나와요. 이유를 보고 아래 표대로 해 보세요. 표에 아무것도 없다면 요청이 학교 서버까지 오지도 못한 거예요(아래 <b>연결이 안 될 때</b>).</p>
+        <figure class="shot"><img src="/guide/img/s6-calls.webp" alt="최근 호출 표. 1번 성공한 호출, 2번 막힌 호출의 빨간 이유" loading="lazy" width="1580" height="445">
+          <figcaption>최근 호출 표 — <span class="n">1</span> 성공 · <span class="n">2</span> 막힌 이유</figcaption></figure>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>표에 나온 이유</th><th>무슨 뜻이에요?</th><th>이렇게 해요</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag">수업 시간대 밖</span></td><td>선생님이 정한 사용 시간이 아니에요.</td><td>내 키 카드의 <b>사용 시간</b>에 다시 해요.</td></tr>
+            <tr><td><span class="tag">예산 초과</span></td><td>내 키의 돈을 다 썼어요.</td><td>선생님께 충전을 부탁해요. <b>예산 리셋</b>이 있으면 그 주기가 지나면 다시 채워져요.</td></tr>
+            <tr><td><span class="tag">학급 예산 초과</span></td><td>우리 반 전체 예산을 다 썼어요.</td><td>선생님께 말씀드려요.</td></tr>
+            <tr><td><span class="tag">허용 안 된 모델</span></td><td>내 키로 쓸 수 없는 모델이에요.</td><td>코드의 <code>model</code> 을 <b>쓸 수 있는 모델</b> 중 하나로 바꿔요.</td></tr>
+            <tr><td><span class="tag">없는 모델 이름</span></td><td>모델 이름에 오타가 있어요.</td><td>철자·대소문자·하이픈(-)을 확인해요.</td></tr>
+            <tr><td><span class="tag">잘못된 키</span></td><td>키가 틀렸어요. 일부만 복사했거나 빈칸이 끼었어요.</td><td>[복사] 버튼으로 다시 복사해 붙여 넣어요. 옛 키라면 새 키로 바꿔요.</td></tr>
+            <tr><td><span class="tag">만료된 키</span></td><td>쓸 수 있는 기간이 끝났어요.</td><td>선생님께 연장을 부탁해요.</td></tr>
+            <tr><td><span class="tag">차단된 키</span></td><td>선생님이 키를 막았어요(시험 시간 봉쇄 포함).</td><td>선생님께 여쭤봐요.</td></tr>
+            <tr><td><span class="tag">속도 제한(RPM/TPM)</span></td><td>짧은 시간에 너무 많이 불렀어요.</td><td>1분쯤 쉬었다가 다시 해요. 반복문이라면 <code>time.sleep(2)</code> 를 넣어요.</td></tr>
+            <tr><td><span class="tag">입력이 너무 김</span></td><td>한 번에 보낸 글이 너무 길어요.</td><td>글을 줄이거나 나눠서 보내요.</td></tr>
+            <tr><td><span class="tag">응답 시간 초과</span> <span class="tag">공급자 서버 오류</span></td><td>AI 회사 서버가 바쁘거나 잠깐 문제가 있어요.</td><td>잠시 뒤 다시 해요. 계속되면 선생님께 알려요.</td></tr>
+            <tr><td><span class="tag">공급자 키 한도 소진</span> <span class="tag">공급자 요금 한도</span></td><td>학교가 AI 회사에 준비한 금액이 바닥났어요.</td><td>내 잘못이 아니에요. 선생님께 알려 드려요.</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>연결이 안 될 때 (표에 기록이 없을 때)</h3>
+        <ul>
+          <li><code>APIConnectionError</code> · <code>Connection error</code> · 오래 기다리다 끝남 → <b>학교 와이파이</b>에 연결돼 있는지 확인해요. 집·휴대폰 데이터·코랩에서는 안 돼요.</li>
+          <li><code>base_url</code> 이 <code data-fill="proxy">http://학교서버주소:4000</code> 과 똑같은지 봐요. <code>http://</code> 와 <code>:4000</code> 까지 있어야 해요.</li>
+          <li>브라우저로 위 주소를 열어 보세요. 영어로 된 문서 페이지가 뜨면 서버는 살아 있는 거예요.</li>
+        </ul>
+        <div class="box tip"><p>그래도 모르겠으면 최근 호출 표의 <b>이유</b>와 <b>오류 메시지 전체</b>를 사진 찍어 선생님께 보여 주세요. 원인을 훨씬 빨리 찾을 수 있어요.</p></div>
+      </section>
+
+      <section class="g-sec" id="elfy">
+        <h2><span class="no">7</span>AI 엘피에게 물어보기</h2>
+        <p>선생님이 켜 두었다면 조종석 오른쪽 아래에 도우미 <b>엘피</b>가 보여요. 엘피를 누르고 이렇게 물어보세요.</p>
+        <ul>
+          <li>“내 키 왜 안 돼?”</li>
+          <li>“남은 예산이 얼마야? 이 속도면 언제 끝나?”</li>
+          <li>“최근에 막힌 호출 이유 알려 줘”</li>
+        </ul>
+        <p class="small muted">엘피는 <b>내 키 정보만</b> 보고 알려 줘요. 충전이나 시간 변경 같은 일은 할 수 없으니 그런 부탁은 선생님께 해요.</p>
+      </section>
+
+      <section class="g-sec" id="rules">
+        <h2><span class="no">8</span>꼭 지켜 주세요</h2>
+        <div class="box danger">
+          <p>🔑 <b>키는 나만 써요.</b> 빌려주거나 빌려 쓰지 않아요.</p>
+          <p>📤 <b>코드를 올리거나 보낼 때 키를 지워요.</b> 깃허브·블로그·단톡방 모두요.</p>
+          <p>🙅 <b>개인정보를 AI 에게 보내지 않아요.</b> 주민등록번호, 전화번호, 주소, 친구 이름·사진 같은 것들이요.</p>
+          <p>🔁 <b>반복문으로 끝없이 부르지 않아요.</b> 예산이 순식간에 사라져요. 먼저 한 번 돌려 보고 늘려요.</p>
+          <p>🧐 <b>AI 의 답을 그대로 믿지 않아요.</b> 틀린 답도 자신 있게 말할 수 있어요. 꼭 확인해요.</p>
+          <p>📝 <b>수행평가·과제 규칙을 따라요.</b> AI 를 써도 되는지, 어디까지 되는지 선생님 안내를 먼저 들어요.</p>
+        </div>
+      </section>
+
+      <footer class="g-foot">AIAPI 학생 안내서 · 그림 속 이름과 키는 연습용 예시예요. · <a href="/guide/teacher.html">선생님 안내서</a></footer>
+    </main>
+  </div>
+  <script src="/guide/guide.js"></script>
+</body>
+</html>

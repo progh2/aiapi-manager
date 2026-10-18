@@ -503,8 +503,10 @@ body.scene-off .alert-list, body.no-webgl .alert-list { max-height: 420px; }
 .share-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 
 /* ---------------------------------------------------------------- 선택 막대 */
+/* 막대를 감싼 칸(#k-bulk)이 패널 안에서 붙어 있어야 목록이 길어도 화면 아래에 보인다(막대 자신은 감싼 칸 밖으로 못 나간다). */
+#k-bulk { position: sticky; bottom: 0; z-index: 5; }
 .bulkbar {
-  position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin-top: 12px; padding: 10px 12px; border: 1px solid var(--hud); border-radius: 6px;
   background: rgba(6, 24, 42, 0.96); box-shadow: 0 -8px 26px rgba(0, 0, 0, 0.45), 0 0 18px rgba(95, 220, 255, 0.2);
   animation: rise 0.25s var(--ease);
@@ -627,6 +629,8 @@ body.reduce-motion .holo-fig img { animation: none; }
 .login-card .btn { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
 .login-error { margin-top: 14px; text-align: left; font-size: 12.5px; line-height: 1.6; color: #ffd0d0; }
 .login-error:empty { display: none; }
+.login-guide { display: inline-block; margin-top: 16px; font-size: 13px; color: var(--text-secondary); text-decoration: none; border-bottom: 1px dashed var(--line-2); }
+.login-guide:hover { color: var(--hud); border-bottom-color: var(--hud); }
 
 /* ---------------------------------------------------------------- 인쇄 */
 #print-root { display: none; }
@@ -689,3 +693,12 @@ body.reduce-motion .holo-fig img { animation: none; }
 .keybox .k-note { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); }
 .keybox.off { display: block; border-style: solid; border-color: var(--line); font-size: 12px; color: var(--text-secondary); line-height: 1.55; }
 .keybox-lbl { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+
+/* ---------------------------------------------------------------- Codex 설정 창 */
+.cx-steps { margin: 14px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 14px; font-size: 13px; line-height: 1.6; }
+.cx-steps > li::marker { color: var(--hud); font-weight: 700; }
+.cx-steps pre { max-height: 220px; font-size: 11.5px; }
+.cx-file { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+
+/* 08 기록 → 학생 접속 안내의 주소 */
+.gd-url { font: 600 12.5px/1.4 var(--font-mono); color: var(--text-primary); background: rgba(0, 0, 0, 0.3); padding: 4px 8px; border-radius: 4px; word-break: break-all; }

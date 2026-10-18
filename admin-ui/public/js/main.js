@@ -520,6 +520,8 @@ async function startAdmin({ api, me, proxyUrl }) {
         { group: "SYSTEM", label: "전체 화면", sub: "F", run: toggleFullscreen },
         { group: "SYSTEM", label: "설정", run: openSettings },
         { group: "SYSTEM", label: "단축키 도움말", sub: "?", run: openHelp },
+        { group: "SYSTEM", label: "그림 안내서 (선생님용)", sub: "새 창", keywords: "가이드 매뉴얼 설명서 사용법 guide", run: () => window.open("/guide/teacher.html", "_blank", "noopener") },
+        { group: "SYSTEM", label: "그림 안내서 (학생용)", sub: "새 창", keywords: "가이드 매뉴얼 설명서 사용법 guide 학생", run: () => window.open("/guide/student.html", "_blank", "noopener") },
       );
       for (const t of state.teams) items.push({ group: "CLASS", label: t.team_alias || t.team_id.slice(0, 8), sub: "학급/조", searchOnly: true, run: () => ctx.go("classes", { team_id: t.team_id }) });
       for (const k of state.keys) if (k.key_alias && !isRetired(k)) items.push({ group: "KEY", label: k.key_alias, sub: store.teamName(k.team_id) || "키", searchOnly: true, keywords: (k.metadata && k.metadata.aiapi_camp && k.metadata.aiapi_camp.code) || "", run: () => ctx.openKey(k.token) });
@@ -601,6 +603,9 @@ async function startAdmin({ api, me, proxyUrl }) {
     modal({
       title: "사용 안내 · 단축키", code: "FIELD MANUAL", size: "wide",
       body: `
+        <p class="help" style="margin-top:0">처음 쓰신다면 그림으로 된 안내서부터 보세요 —
+          <a href="/guide/teacher.html" target="_blank" rel="noopener"><b>선생님 안내서</b></a> ·
+          <a href="/guide/student.html" target="_blank" rel="noopener"><b>학생 안내서</b></a>(학생에게 이 주소를 알려 주면 됩니다)</p>
         <div class="grid g2">
           <div><table class="tbl"><tbody>
             ${row('<span class="kbd">1</span> … <span class="kbd">9</span>', "스테이션 이동 (9 = AI 엘피 설정)")}

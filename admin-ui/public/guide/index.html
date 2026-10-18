@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AIAPI 사용 안내서</title>
+  <link rel="icon" href="/mascot/holo/elf-welcome.webp">
+  <link rel="stylesheet" href="/css/fonts.css">
+  <link rel="stylesheet" href="/guide/guide.css">
+</head>
+<body>
+  <header class="g-top">
+    <a class="g-brand" href="/guide/"><img src="/mascot/holo/elf-welcome.webp" alt=""><b>AIAPI</b><span>사용 안내서</span></a>
+    <nav aria-label="안내서">
+      <a href="/guide/" aria-current="page">처음</a>
+      <a href="/guide/student.html">학생</a>
+      <a href="/guide/teacher.html">선생님</a>
+      <a href="/">로그인 화면 →</a>
+    </nav>
+  </header>
+
+  <div class="g-wrap" style="grid-template-columns:minmax(0,900px)">
+    <main>
+      <div class="g-hero">
+        <div>
+          <div class="g-kicker">FIELD GUIDE</div>
+          <h1>AIAPI 사용 안내서</h1>
+          <p class="g-lead">학교 AI 서버로 ChatGPT 같은 AI 를 코드와 앱에서 불러 쓰는 방법을 그림과 함께 차근차근 알려 드려요. 처음이어도 순서대로 따라 하면 돼요.</p>
+        </div>
+        <img src="/mascot/holo/elf-welcome.webp" alt="안내하는 엘피">
+      </div>
+
+      <div class="cards">
+        <a class="card" href="/guide/student.html">
+          <span class="who">FOR STUDENTS</span>
+          <h2>🎒 학생 안내서</h2>
+          <ul>
+            <li>학교 구글 계정으로 로그인해 <b>내 키 보기·복사</b></li>
+            <li>파이썬 코드에서 AI 불러 쓰기</li>
+            <li>Codex 앱에서 학교 키로 쓰기</li>
+            <li>“안 돼요!” 할 때 이유 찾기</li>
+          </ul>
+          <span class="go">학생 안내서 보기 →</span>
+        </a>
+        <a class="card" href="/guide/teacher.html">
+          <span class="who">FOR TEACHERS</span>
+          <h2>🧑‍🏫 선생님 안내서</h2>
+          <ul>
+            <li>학급 명단으로 <b>키 한꺼번에 나눠 주기</b></li>
+            <li>학생에게 알려 줄 주소 두 개</li>
+            <li>사용량 보기 · 충전 · 연장 · 봉쇄</li>
+            <li>관리자 추가 · 자동 업데이트 · 백업</li>
+          </ul>
+          <span class="go">선생님 안내서 보기 →</span>
+        </a>
+      </div>
+
+      <section class="g-sec" id="how">
+        <h2>학교 AI 서버는 이렇게 움직여요</h2>
+        <div class="flow" role="img" aria-label="내 코드가 학교 AI 서버를 거쳐 AI 회사로 가는 길">
+          <div class="node"><div class="ic">💻</div><b>내 코드 · Codex 앱</b><span>학교 키를 붙여<br>질문을 보내요</span></div>
+          <div class="arrow">→</div>
+          <div class="node mid"><div class="ic">🛰️</div><b>학교 AI 서버</b><span>키가 맞는지, 예산이 남았는지,<br>수업 시간인지 확인해요</span></div>
+          <div class="arrow">→</div>
+          <div class="node"><div class="ic">🤖</div><b>AI 회사 (OpenAI 등)</b><span>답을 만들어<br>돌려줘요</span></div>
+        </div>
+        <p>학생은 AI 회사 계정이나 카드가 없어도 돼요. 선생님이 만든 <b>학교 키</b> 하나로 정해진 예산 안에서 써요. 요청이 막히면 막힌 <b>이유</b>가 기록에 남아서 학생도 선생님도 바로 확인할 수 있어요.</p>
+        <div class="box note">
+          <p><b>주소 두 개만 기억하세요</b></p>
+          <p>· 로그인하는 화면(관제 함교) — <code data-fill="site">http://학교서버주소:3000</code><br>
+             · 코드가 질문을 보내는 AI 서버(<code>base_url</code>) — <code data-fill="proxy">http://학교서버주소:4000</code></p>
+          <p class="small muted">학교 안(학교 와이파이·컴퓨터실)에서만 열려요. 집이나 구글 코랩(Colab)에서는 연결되지 않아요.</p>
+        </div>
+      </section>
+
+      <section class="g-sec" id="terms">
+        <h2>처음 보는 낱말 풀이</h2>
+        <dl class="terms">
+          <dt>API</dt><dd>프로그램끼리 주고받는 약속이에요. 내 코드가 AI 에게 “이 질문에 답해 줘”라고 부탁하는 창구예요.</dd>
+          <dt>API 키</dt><dd>학교 AI 서버에 들어가는 <b>비밀 출입증</b>이에요. <code>sk-</code> 로 시작해요. 비밀번호처럼 나만 써요.</dd>
+          <dt>base_url</dt><dd>질문을 보낼 서버 주소예요. 우리는 OpenAI 대신 <b>학교 AI 서버 주소</b>를 넣어요.</dd>
+          <dt>모델</dt><dd>답을 만드는 AI 의 이름이에요(예: <code>gpt-4o-mini</code>). 키마다 쓸 수 있는 모델이 정해져 있어요.</dd>
+          <dt>토큰</dt><dd>AI 가 글을 세는 단위예요. 한글 한두 글자쯤이 1토큰이에요. 질문과 답이 길수록 토큰을 많이 써요.</dd>
+          <dt>예산</dt><dd>키 하나가 쓸 수 있는 돈(달러)이에요. 토큰을 쓸 때마다 조금씩 줄고, 다 쓰면 막혀요.</dd>
+        </dl>
+      </section>
+
+      <footer class="g-foot">AIAPI · 수업용 AI API 관제 함교 · 문제가 있으면 담당 선생님께 알려 주세요.</footer>
+    </main>
+  </div>
+  <script src="/guide/guide.js"></script>
+</body>
+</html>
